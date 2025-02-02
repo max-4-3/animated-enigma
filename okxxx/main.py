@@ -71,79 +71,81 @@ async def download_video(sem: asyncio.Semaphore, session: aiohttp.ClientSession,
         os.makedirs(temp_dir, exist_ok=True)
         m3u8_urls = []
         
-        print(f'Parsing index...')
-        async with session.get(video_url) as m3u8_r:
-            m3u8_r.raise_for_status()
-            raw = await m3u8_r.text()
+        try:
+            print(f'Parsing index...')
+            async with session.get(video_url) as m3u8_r:
+                m3u8_r.raise_for_status()
+                raw = await m3u8_r.text()
 
-            data = ''
-            for line in raw.splitlines():
-                if line.startswith('#'):
-                    data += line
-                else:
-                    break
-            
-            base_url = video_url.rsplit('/', 1)[0]
-            m3u8_urls = [((base_url if not l.startswith('https') else '') + l, l.split('/')[-1].split('?')[0]) for l in raw.splitlines() if l and not l.startswith('#')]
-            print(f'{Fore.LIGHTRED_EX}{m3u8_urls.__len__()}{Fore.RESET} segements url found!')
+                data = ''
+                for line in raw.splitlines():
+                    if line.startswith('#'):
+                        data += line
+                    else:
+                        break
 
-        # Download all segments
-        with tqdm(total=len(m3u8_urls), position=0, desc='Segment progress', unit='seg', colour='green') as pbar:
-            tasks = []
-            filenames = []
-            for link, name in m3u8_urls:
-                tasks.append(asyncio.create_task(download_segment(DOWNLOAD_SEM, session, link, temp_dir, pbar)))
-                filenames.append(os.path.join(temp_dir, name))
-            
-            await asyncio.gather(*tasks)
-    
-        # Create the segmentInfo.txt file with correct formating
-        segement_infofile = os.path.join(download_dir, f'{random_name}_seginfo.txt')
-        with open(segement_infofile, 'w') as file:
-            file.write('\n'.join([f'file \'{a.replace("\\", "/")}\'' for a in filenames if a])) # file 'c:\abs\path\segment.ts'
-        
-        # Concate (e.g. combine) all segments ( with abspath being compulsory )
-        print(f'Concating segments...')
-        output_file_temp = os.path.join(download_dir, random_name + '_' + video_title + video_ext)
-        command = ['ffmpeg', '-f', 'concat', '-safe', '0', '-i', os.path.abspath(segement_infofile), '-c', 'copy', '-y', '-hide_banner', '-loglevel', 'error', '-fflags', '+genpts', os.path.abspath(output_file_temp)]
-        proccess = await asyncio.create_subprocess_exec(*command, stderr=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE)
-        _, stderr = await proccess.communicate()
+                base_url = video_url.rsplit('/', 1)[0]
+                m3u8_urls = [((base_url if not l.startswith('https') else '') + l, l.split('/')[-1].split('?')[0]) for l in raw.splitlines() if l and not l.startswith('#')]
+                print(f'{Fore.LIGHTRED_EX}{m3u8_urls.__len__()}{Fore.RESET} segements url found!')
 
-        if proccess.returncode != 0:
-            print(f'{Fore.LIGHTMAGENTA_EX}Error occured: {Fore.RESET}\n{stderr.decode()}')
-        else:
-            print(f'{Fore.LIGHTGREEN_EX}Concation succesfull!{Fore.RESET}')
+            # Download all segments
+            with tqdm(total=len(m3u8_urls), position=0, desc='Segment progress', unit='seg', colour='green') as pbar:
+                tasks = []
+                filenames = []
+                for link, name in m3u8_urls:
+                    tasks.append(asyncio.create_task(download_segment(DOWNLOAD_SEM, session, link, temp_dir, pbar)))
+                    filenames.append(os.path.join(temp_dir, name))
 
-        # Re-encode for smoother playback if 're_encode'
-        output_file = os.path.join(download_dir, video_title + video_ext)
-        if re_encode:
-            print('Re-encoding...')
-            command = ['ffmpeg', '-i', output_file_temp, '-hide_banner', '-c:v', 'libx264', '-preset', 'fast', '-c:a', 'aac', output_file]
+                await asyncio.gather(*tasks)
+
+            # Create the segmentInfo.txt file with correct formating
+            segement_infofile = os.path.join(download_dir, f'{random_name}_seginfo.txt')
+            with open(segement_infofile, 'w') as file:
+                file.write('\n'.join([f'file \'{a.replace("\\", "/")}\'' for a in filenames if a])) # file 'c:\abs\path\segment.ts'
+
+            # Concate (e.g. combine) all segments ( with abspath being compulsory )
+            print(f'Concating segments...')
+            output_file_temp = os.path.join(download_dir, random_name + '_' + video_title + video_ext)
+            command = ['ffmpeg', '-f', 'concat', '-safe', '0', '-i', os.path.abspath(segement_infofile), '-c', 'copy', '-y', '-hide_banner', '-loglevel', 'error', '-fflags', '+genpts', os.path.abspath(output_file_temp)]
             proccess = await asyncio.create_subprocess_exec(*command, stderr=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE)
             _, stderr = await proccess.communicate()
 
             if proccess.returncode != 0:
                 print(f'{Fore.LIGHTMAGENTA_EX}Error occured: {Fore.RESET}\n{stderr.decode()}')
             else:
-                print(f'{Fore.LIGHTGREEN_EX}Re-encoding succesfull!{Fore.RESET}')
-        else:
-            os.rename(output_file_temp, output_file)
+                print(f'{Fore.LIGHTGREEN_EX}Concation succesfull!{Fore.RESET}')
 
-        # Cleanup the temp files if 'cleanup'
-        if cleanup:
-            print(f'Cleaning temp files...')
-            try:
-                shutil.rmtree(temp_dir, True)
-                os.remove(segement_infofile)
-                if os.path.exists(output_file_temp):
-                    os.remove(output_file_temp)
-                print(f'{Fore.LIGHTGREEN_EX}Cleanup succesfull{Fore.RESET}!')
-            except Exception as e:
-                print(f'{Fore.LIGHTMAGENTA_EX}Error occured during cleanup{Fore.RESET}: {e}')            
-        else:
-            print('Skipping cleaning the temp!')
+            # Re-encode for smoother playback if 're_encode'
+            output_file = os.path.join(download_dir, video_title + video_ext)
+            if re_encode:
+                print('Re-encoding...')
+                command = ['ffmpeg', '-i', output_file_temp, '-hide_banner', '-c:v', 'libx264', '-preset', 'fast', '-c:a', 'aac', output_file]
+                proccess = await asyncio.create_subprocess_exec(*command, stderr=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE)
+                _, stderr = await proccess.communicate()
+
+                if proccess.returncode != 0:
+                    print(f'{Fore.LIGHTMAGENTA_EX}Error occured: {Fore.RESET}\n{stderr.decode()}')
+                else:
+                    print(f'{Fore.LIGHTGREEN_EX}Re-encoding succesfull!{Fore.RESET}')
+            else:
+                os.rename(output_file_temp, output_file)
+
+        finally:
+            # Cleanup the temp files if 'cleanup'
+            if cleanup:
+                print(f'Cleaning temp files...')
+                try:
+                    shutil.rmtree(temp_dir, True)
+                    os.remove(segement_infofile)
+                    if os.path.exists(output_file_temp):
+                        os.remove(output_file_temp)
+                    print(f'{Fore.LIGHTGREEN_EX}Cleanup succesfull{Fore.RESET}!')
+                except Exception as e:
+                    print(f'{Fore.LIGHTMAGENTA_EX}Error occured during cleanup{Fore.RESET}: {e}')
+            else:
+                print('Skipping cleaning the temp!')
+
         end = time.perf_counter()
-
         return (os.path.getsize(output_file) if os.path.exists(output_file) else 0), round(end - start, 2)
 
 async def download_videos(sem, session: aiohttp.ClientSession, data: dict, root_download_path: str):
@@ -160,17 +162,25 @@ async def download_videos(sem, session: aiohttp.ClientSession, data: dict, root_
         clear()
 
         print(f'{idx}. Extracting details for "{Fore.LIGHTBLUE_EX}{video['url'].split('/')[-1]}{Fore.RESET}" \n[{len(videos) - idx} remaning, total: {len(videos)}]')
-        full_info = await extract_video_info(sem, session, video['url'])
-        new_videos.append(full_info)
+        try:
+            full_info = await extract_video_info(sem, session, video['url'])
+            new_videos.append(full_info)
 
-        print(f'Downloading "{full_info['title']}"...')
-        download_url = list(full_info['media'].values())[-1]['url']
-        download_size, download_time = await download_video(sem, session, full_info['title'], download_url, '.mp4', download_dir)
-        print(f'Completed Download in {download_time}s [{download_size / (1024**2):.2f}MB]')
+            print(f'Downloading "{full_info['title']}"...')
+            download_url = list(full_info['media'].values())[-1]['url']
+            download_size, download_time = await download_video(sem, session, full_info['title'], download_url, '.mp4', download_dir)
+            print(f'Completed Download in {download_time}s [{download_size / (1024**2):.2f}MB]')
 
-        total_size += download_size
-        total_time += download_time
-        await asyncio.sleep(1)
+            total_size += download_size
+            total_time += download_time
+        except KeyboardInterrupt:
+            if input('Quit Downloading?: ').lower().strip() in ['yes', 'y', '']:
+                break
+
+        except Exception as e:
+            print(f'Got an error: {e}')
+        finally:
+            await asyncio.sleep(1)
 
     data['videos'] = new_videos
     data['total_download_size'] = total_size
