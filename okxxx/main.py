@@ -196,7 +196,6 @@ async def main():
         while True:
             clear()
             temp = os.path.join(f'{uuid4()}__initial.json')
-            print(DOWNLOAD_DIR, DATA_DIR)
             link = input(f'{Fore.LIGHTYELLOW_EX}Enter link{Fore.RESET}: ').strip()
             if 'video' in link:
                 data = {'videos': [{'url': link}]}
