@@ -8,10 +8,27 @@ from colorama import Fore
 
 import os, asyncio, aiohttp, json, aiofiles, shutil, time
 
-DOWNLOAD_DIR = os.path.expanduser('~/Videos/Downloaders/okxxx/')
-DATA_DIR = os.path.expanduser('~/Videos/Downloaders/okxxx/data')
-os.makedirs(DATA_DIR, exist_ok=True)
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+DOWNLOAD_DIR, DATA_DIR, QUERY_SEM, DOWNLOAD_SEM = None, None, None, None
+
+def load_data(fp='../config.json'):
+    if not os.path.exists(fp):
+        return
+    global DOWNLOAD_DIR, DATA_DIR, QUERY_SEM, DOWNLOAD_SEM
+
+    with open(fp, 'r', errors='ignore', encoding='utf-8') as file:
+        data = json.load(file)
+        DOWNLOAD_DIR = data.get('download_dir', None)
+        if not DOWNLOAD_DIR:
+            raise ValueError(f'Please Set Download PATH in "{fp}"')
+
+        DOWNLOAD_DIR = DOWNLOAD_DIR if not DOWNLOAD_DIR.startswith('~') else os.path.expanduser(DOWNLOAD_DIR)
+        DOWNLOAD_DIR = os.path.join(DOWNLOAD_DIR, os.path.split(os.path.split(__file__)[0])[1])
+        DATA_DIR = os.path.join(DOWNLOAD_DIR, 'data')
+        QUERY_SEM = asyncio.Semaphore(data.get('query_sem_limit', 2))
+        DOWNLOAD_SEM = asyncio.Semaphore(data.get('download_sem_limit', 4))
+
+        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+        os.makedirs(DATA_DIR, exist_ok=True)
 
 
 def save_data(d, fp):
@@ -23,54 +40,6 @@ def save_data(d, fp):
 
 def clear():
     os.system('cls' if os.name.lower() in ['windows', 'nt'] else 'clear')
-
-# async def download_video(sem, video_title, video_url, video_ext, download_dir):
-#     async with sem:
-#         os.makedirs(download_dir, exist_ok=True)
-
-#         print(f"Downloading \"{video_title}\" in \"{download_dir}\"")
-#         fullpath = os.path.join(download_dir, video_title + video_ext)
-#         # Construct the ffmpeg command
-#         log_level = '-loglevel'
-#         command = [
-#             "ffmpeg",
-#             "-i", video_url,
-#             "-hide_banner", '-y',
-#             # log_level, 'info',
-#             fullpath
-#         ]
-
-#         # Run the command asynchronously
-#         try:
-#             process = await asyncio.create_subprocess_exec(
-#                 *command,
-#                 stdout=asyncio.subprocess.PIPE,
-#                 stderr=asyncio.subprocess.PIPE
-#             )
-
-#             with tqdm(desc='Frame Proccessed', unit='') as pbar:
-#                 while True:
-#                     line = await process.stderr.readline() or await process.stdout.readline()
-#                     if not line:
-#                         break
-#                     line = line.decode()
-                    
-#                     if 'frame=' in line:
-#                         frame = int(line.split('frame=')[1].split('fps=')[0].strip())
-#                         pbar.update(frame - pbar.n)
-                    
-#                     pbar.refresh()
-
-#             stdout, stderr = await process.communicate()
-
-#             if process.returncode == 0:
-#                 print(f"Download complete: {fullpath}")
-#             else:
-#                 print(f"Error occurred: \n{stderr.decode().strip() or stdout.decode().strip()}")
-#             return os.path.getsize(fullpath) if os.path.exists(fullpath) else 0
-#         except Exception as e:
-#             print(f"Exception during download: {e}")
-#             return 0
 
 async def download_segment(sem, session: aiohttp.ClientSession, segment_url: str, download_dir: str, pbar: tqdm):
     async with sem:
@@ -123,7 +92,7 @@ async def download_video(sem: asyncio.Semaphore, session: aiohttp.ClientSession,
             tasks = []
             filenames = []
             for link, name in m3u8_urls:
-                tasks.append(asyncio.create_task(download_segment(sem, session, link, temp_dir, pbar)))
+                tasks.append(asyncio.create_task(download_segment(DOWNLOAD_SEM, session, link, temp_dir, pbar)))
                 filenames.append(os.path.join(temp_dir, name))
             
             await asyncio.gather(*tasks)
@@ -212,20 +181,21 @@ async def main():
     headers = {
         'User-Agent': UserAgent().random 
     }
+    load_data()
     async with aiohttp.ClientSession(headers=headers) as session:
-        sem = asyncio.Semaphore(1)
         while True:
             clear()
             temp = os.path.join(f'{uuid4()}__initial.json')
+            print(DOWNLOAD_DIR, DATA_DIR)
             link = input(f'{Fore.LIGHTYELLOW_EX}Enter link{Fore.RESET}: ').strip()
             if 'video' in link:
                 data = {'videos': [{'url': link}]}
             else:
-                data = await extract_videos_from_webpage(sem, session, link)
+                data = await extract_videos_from_webpage(QUERY_SEM, session, link)
             save_data(data, temp)
             
             download_dir = os.path.join(DOWNLOAD_DIR, datetime.now().strftime('%Y_%m_%d'))
-            new_data = await download_videos(asyncio.Semaphore(2), session, data, download_dir)
+            new_data = await download_videos(QUERY_SEM, session, data, download_dir)
 
             data_path = os.path.join(DATA_DIR, f'{uuid4()}.json')
             save_data(new_data, data_path)

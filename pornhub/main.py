@@ -10,10 +10,27 @@ import os, asyncio, aiohttp, json, aiofiles, shutil, time, ssl
 
 IP_ADDR = '66.254.114.41'
 DOMAIN = 'www.pornhub.org'
-DOWNLOAD_DIR = '/home/max/Videos/Downloaders/pornhub'
-DATA_DIR = '/home/max/Videos/Downloaders/pornhub/data'
-os.makedirs(DATA_DIR, exist_ok=True)
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+DOWNLOAD_DIR, DATA_DIR, QUERY_SEM, DOWNLOAD_SEM = None, None, None, None
+
+def load_data(fp='../config.json'):
+    if not os.path.exists(fp):
+        return
+    global DOWNLOAD_DIR, DATA_DIR, QUERY_SEM, DOWNLOAD_SEM
+
+    with open(fp, 'r', errors='ignore', encoding='utf-8') as file:
+        data = json.load(file)
+        DOWNLOAD_DIR = data.get('download_dir', None)
+        if not DOWNLOAD_DIR:
+            raise ValueError(f'Please Set Download PATH in "{fp}"')
+
+        DOWNLOAD_DIR = DOWNLOAD_DIR if not DOWNLOAD_DIR.startswith('~') else os.path.expanduser(DOWNLOAD_DIR)
+        DOWNLOAD_DIR = os.path.join(DOWNLOAD_DIR, os.path.split(os.path.split(__file__)[0])[1])
+        DATA_DIR = os.path.join(DOWNLOAD_DIR, 'data')
+        QUERY_SEM = asyncio.Semaphore(data.get('query_sem_limit', 2))
+        DOWNLOAD_SEM = asyncio.Semaphore(data.get('download_sem_limit', 4))
+
+        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+        os.makedirs(DATA_DIR, exist_ok=True)
 
 def save_data(d, fp):
     with open(fp, 'w') as file:
@@ -53,7 +70,6 @@ async def download_video(sem: asyncio.Semaphore, session: aiohttp.ClientSession,
         temp_dir = os.path.join(download_dir, 'temp_' + random_name)
         os.makedirs(temp_dir, exist_ok=True)
         m3u8_urls = []
-        download_sem = asyncio.Semaphore(2)
 
         print(f'Parsing index...')
         # First get request
@@ -78,7 +94,7 @@ async def download_video(sem: asyncio.Semaphore, session: aiohttp.ClientSession,
             filenames = []
             for idx, link in enumerate(m3u8_urls, start=1):
                 segment_name = f"seg-{idx}.ts"
-                tasks.append(asyncio.create_task(download_segment(download_sem, session, link, segment_name, temp_dir, pbar)))
+                tasks.append(asyncio.create_task(download_segment(DOWNLOAD_SEM, session, link, segment_name, temp_dir, pbar)))
                 filenames.append(os.path.join(temp_dir, segment_name))
             
             await asyncio.gather(*tasks)
@@ -176,9 +192,9 @@ async def main():
     context = ssl.create_default_context()
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
+    load_data()
 
     async with aiohttp.ClientSession(base_url=f'https://{IP_ADDR}', headers=headers, connector=aiohttp.TCPConnector(ssl=context)) as session, aiohttp.ClientSession(headers={'User-Agent': UserAgent().random}) as download_session:
-        sem = asyncio.Semaphore(1)
         while True:
             clear()
             temp = os.path.join(f'{uuid4()}__initial.json')
@@ -188,11 +204,11 @@ async def main():
             if 'viewkey=' in link:
                 data = {'videos': [{'url': link}]}
             else:
-                data = await extract_videos_from_webpage(sem, session, link)
+                data = await extract_videos_from_webpage(QUERY_SEM, session, link)
             save_data(data, temp)
             
             download_dir = os.path.join(DOWNLOAD_DIR, datetime.now().strftime('%Y_%m_%d'))
-            new_data = await download_videos(asyncio.Semaphore(2), session, download_session, data, download_dir)
+            new_data = await download_videos(QUERY_SEM, session, download_session, data, download_dir)
 
             data_path = os.path.join(DATA_DIR, f'{uuid4()}.json')
             save_data(new_data, data_path)
