@@ -28,7 +28,7 @@ async def concat_segments(file_lists, save_path, save_name):
     # Command for concatenation using ffmpeg
     command = [
         'ffmpeg', '-f', 'concat', '-safe', '0', '-i', temp_concate_file,
-        '-hide_banner', '-c', 'copy', filepath
+        '-hide_banner', '-fflags', '+genpts', '-movflags', '+faststart', '-c', 'copy', filepath
     ]
 
     # Run the ffmpeg command asynchronously
@@ -80,7 +80,7 @@ async def download_segment(sem, session: aiohttp.ClientSession, url, name, path,
                 r.raise_for_status()
                 file_path = os.path.join(path, name)
                 async with aiofiles.open(file_path, 'wb') as file:
-                    async for chunk in r.content.iter_chunked(1024 * 1024 * 10):  # 4 MB chunks
+                    async for chunk in r.content.iter_chunked(1024 * 1024 * 10):  # 10 MB chunks
                         await file.write(chunk)
                         total += len(chunk)
                         top_level_bar.set_postfix_str(f'Downloaded: {total / (1024**2):.2f}MB', refresh=True)

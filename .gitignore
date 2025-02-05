@@ -176,5 +176,5 @@ cython_debug/
 *.jpg
 *.jpeg
 *.json
-!config.json
+config.json
 

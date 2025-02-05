@@ -161,7 +161,7 @@ async def download_videos(sem, session: aiohttp.ClientSession, data: dict, root_
 
         clear()
 
-        print(f'{idx}. Extracting details for "{Fore.LIGHTBLUE_EX}{video['url'].split('/')[-1]}{Fore.RESET}" \n[{len(videos) - idx} remaning, total: {len(videos)}]')
+        print(f'{idx}. Extracting details for "{Fore.LIGHTBLUE_EX}{video['url'].split('/')[-1] or video['url'].split('/')[-2]}{Fore.RESET}" \n[{len(videos) - idx} remaning, total: {len(videos)}]')
         try:
             full_info = await extract_video_info(sem, session, video['url'])
             new_videos.append(full_info)
