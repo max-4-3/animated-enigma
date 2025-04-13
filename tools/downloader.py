@@ -1,4 +1,4 @@
-import aiohttp, asyncio, os, aiofiles, time, shutil, logging
+import aiohttp, asyncio, os, aiofiles, time, shutil, logging, re
 from colorama import Fore
 from uuid import uuid4
 from tqdm import tqdm
@@ -110,13 +110,32 @@ async def download_video(sem: asyncio.Semaphore, session: aiohttp.ClientSession,
                 file.write('\n'.join([f'file \'{a.replace("\\", "/")}\'' for a in filenames if a])) # file 'c:\abs\path\segment.ts'
 
             # Concate (e.g. combine) all segments ( with abspath being compulsory )
-            command = ['ffmpeg', '-f', 'concat', '-safe', '0', '-i', os.path.abspath(segement_infofile), '-c', 'copy', '-y', '-hide_banner', '-loglevel', 'error', '-fflags', '+genpts', os.path.abspath(output_file_temp)]
+            command = ['ffmpeg', '-f', 'concat', '-safe', '0', '-i', os.path.abspath(segement_infofile), '-c', 'copy', '-y', '-hide_banner', '-loglevel', 'debug', '-fflags', '+genpts', os.path.abspath(output_file_temp)]
             Log.info(f'Concating segments for video: {video_title} [{ command = }]')
             proccess = await asyncio.create_subprocess_exec(*command, stderr=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE)
-            _, stderr = await proccess.communicate()
+
+            # Progress bar
+            total_files = len([file for file in open(segement_infofile, 'r').read().splitlines() if file.startswith('file')])
+            line_match_pattern = re.compile('\[concat\s+?@\s+?(\w)+\]\s+?file:(\d+)\s+?stream:\d+?\s+?pts:\d+\s+?')
+            with tqdm(total=total_files, desc='Concatinating', unit='file', unit_divisor=10, unit_scale=False) as concate_bar:
+                while True:
+                    line = await proccess.stderr.readline()
+                    if not line:
+                        break
+
+                    line_match = line_match_pattern.match(line.decode(errors='ignore'))
+                    if line_match:
+                        try:
+                            file_no = int(line_match.group(2)) - concate_bar.n
+                            concate_bar.update(file_no + 1)
+                        except Exception as e:
+                            Log.error(f'Unable to gather file no from "{line.decode(errors='ignore')}": {e}')
+                            concate_bar.update(1)
+
+            await proccess.wait()
 
             if proccess.returncode != 0:
-                Log.error(f'Error occurred during concat for video {video_title}: {stderr.decode()}')
+                Log.error(f'Error occurred during concat for video {video_title}: \n{(await proccess.stderr.read()).decode(errors='ignore')}\n')
                 raise OSError('Unable to Concate file!')
             else:
                 Log.info(f'Concat successful for video: {video_title}')
@@ -124,7 +143,7 @@ async def download_video(sem: asyncio.Semaphore, session: aiohttp.ClientSession,
             # Re-encode for smoother playback if 're_encode'
             output_file = os.path.join(download_dir, video_title + video_ext)
             if re_encode:
-                command = ['ffmpeg', '-i', output_file_temp, '-hide_banner', '-c:v', 'libx264', '-vf', '"format=yuv420p"', '-preset', 'fast', '-c:a', 'aac', '-b:a', '192k', output_file]
+                command = ['ffmpeg', '-i', output_file_temp, '-hide_banner', '-c:v', 'libx264', '-vf', '"format=yuv420p"', '-preset', 'medium', '-c:a', 'aac', '-b:a', '192k', output_file]
                 Log.info(f'Re-encoding video: {video_title} [ { command = } ]')
                 proccess = await asyncio.create_subprocess_exec(*command, stderr=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE)
                 _, stderr = await proccess.communicate()
