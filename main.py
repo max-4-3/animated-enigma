@@ -81,8 +81,8 @@ async def okxxx_handler():
 
 async def pornhub_handler():
     from pornhub import is_valid_link, is_page_link, is_video_link, make_session
-    from okxxx.extractors.page import extract_videos_from_webpage
-    from okxxx.extractors.video import extract_video_info
+    from pornhub.exctractors.page import extract_videos_from_webpage
+    from pornhub.exctractors.video import extract_video
 
     async def download_videos(sem, pornhub_session: ClientSession, download_session: ClientSession, videos: list, root_download_path: str):
         os.makedirs(root_download_path, exist_ok=True)
@@ -106,7 +106,7 @@ async def pornhub_handler():
 
             print(f'{idx}. Extracting details for "{Fore.LIGHTBLUE_EX}{video['url'].split('/')[-1]}{Fore.RESET}" \n[{len(videos) - idx} remaning, total: {len(videos)}]')
             try:
-                full_info = await extract_video_info(sem, pornhub_session, video['url'].replace('https://www.pornhub.org', ''))
+                full_info = await extract_video(sem, pornhub_session, video['url'].replace('https://www.pornhub.org', ''))
                 new_videos.append(full_info)
 
                 print(f'Downloading "{full_info['title']}" [{full_info['duration']}s]...')
@@ -127,7 +127,8 @@ async def pornhub_handler():
 
         return new_videos
 
-    async with make_session() as session:
+    from fake_useragent import UserAgent
+    async with make_session() as session, ClientSession(headers={'User-Agent':UserAgent().random }) as download_session:
         while True:
             clear()
             temp = os.path.join(INITIAL_PATH, f'{uuid4()}__initial.json')
@@ -146,7 +147,7 @@ async def pornhub_handler():
                     raise ValueError(f'Invalid Url! [{ ui = }]')
 
                 try:
-                    new_data = await download_videos(QUERY_SEM, session, urls, os.path.join(DOWNLOAD_PATH, 'pornhub'))
+                    new_data = await download_videos(QUERY_SEM, session, download_session, urls, os.path.join(DOWNLOAD_PATH, 'pornhub'))
                     save_data(new_data, temp)
                 except Exception as e:
                     print(f'Download Error: {e}')
@@ -238,16 +239,23 @@ async def main():
     }
 
     while True:
-        userinput = input('Enter Domain: ')
+        clear()
+        print('\n'.join(f"{i}. {name}" for i, name in enumerate(available_domains.keys(), start=1)))
+        userinput = input('Choose From Above: ')
 
         if userinput.lower().strip() == 'exit':
             return
 
-        handler = available_domains.get(userinput.lower().strip())
-        if not handler:
-            raise NotImplementedError(f'Downloader for \"{userinput}\" is not implemented!')
+        key = None
+        try:
+            key = list(available_domains.keys())[int(userinput.strip().lower()) - 1]
+            handler = available_domains.get(key)
+            if not handler:
+                raise NotImplementedError(f'Downloader for \"{userinput}\" is not implemented!')
 
-        await handler()
+            await handler()
+        except:
+            print(f'Invalid Choice: {userinput}')
 
 if __name__ == "__main__":
     asyncio.run(main())
