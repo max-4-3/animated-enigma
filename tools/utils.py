@@ -75,8 +75,8 @@ def read_until(
                 continue
             
             if not validator(user_input):
-                print("Invalid input - does not meet requirements")
-                input("Press Enter to continue...")
+                print(f"Invalid input [{user_input}] does not meet requirements")
+                input("Press Enter to continue...\n")
                 continue
 
             if url and not user_input.startswith(('http://', 'https://')):
