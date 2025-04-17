@@ -1,6 +1,6 @@
 import asyncio, os
+from rich import print
 from uuid import uuid4
-from colorama import Fore
 from aiohttp import ClientSession
 
 from tools.utils import clear, read_until, save_data, is_user_quit
@@ -16,7 +16,7 @@ async def okxxx_handler():
     async def download_videos(sem, session: ClientSession, videos: list, root_download_path: str):
         os.makedirs(root_download_path, exist_ok=True)
         download_dir = root_download_path
-        print(f'Downloading "{Fore.LIGHTRED_EX}{videos.__len__()}{Fore.RESET}" videos in "{Fore.LIGHTCYAN_EX}{os.path.abspath(download_dir)}{Fore.RESET}"')
+        print(f'Downloading "{videos.__len__()}" videos in "{os.path.abspath(download_dir)}"')
 
         new_videos = []
         total_size = 0
@@ -25,7 +25,7 @@ async def okxxx_handler():
 
             clear()
 
-            print(f'{idx}. Extracting details for "{Fore.LIGHTBLUE_EX}{video['url'].split('/')[-1] or video['url'].split('/')[-2]}{Fore.RESET}" \n[{len(videos) - idx} remaning, total: {len(videos)}]')
+            print(f'{idx}. Extracting details for "{video['url'].split('/')[-1] or video['url'].split('/')[-2]}" \n[{len(videos) - idx} remaning, total: {len(videos)}]')
             try:
                 full_info = await extract_video_info(sem, session, video['url'])
                 new_videos.append(full_info)
@@ -53,7 +53,7 @@ async def okxxx_handler():
             clear()
             temp = os.path.join(INITIAL_PATH, f'{uuid4()}__initial.json')
             try:
-                ui = input(f'{Fore.LIGHTYELLOW_EX}Enter link ["list" for multiple links]{Fore.RESET}: ').strip()
+                ui = input(f'Enter link ["list" for multiple links]: ').strip()
                 
                 if ui.lower().strip() == "list":
                     urls = [{'url': url} for url in read_until('Enter link', validator=is_video_link)]
@@ -87,15 +87,20 @@ async def pornhub_handler():
     async def download_videos(sem, pornhub_session: ClientSession, download_session: ClientSession, videos: list, root_download_path: str):
         os.makedirs(root_download_path, exist_ok=True)
         download_dir = root_download_path
-        print(f'Downloading "{Fore.LIGHTRED_EX}{videos.__len__()}{Fore.RESET}" videos in "{Fore.LIGHTCYAN_EX}{os.path.abspath(download_dir)}{Fore.RESET}"')
+        print(f'Downloading "{videos.__len__()}" videos in "{os.path.abspath(download_dir)}"')
 
         async def get_index_url(a):
-            async with session.get(a) as m3u8_r:
+            async with download_session.get(a) as m3u8_r:
                 m3u8_r.raise_for_status()
                 raw = await m3u8_r.text()
+                first_non_comment_line = [line for line in raw.splitlines() if not line.startswith("#")]
 
-                base_url = a.rsplit('/', 1)[0] + '/'
-                return base_url + [l for l in raw.splitlines() if l and not l.startswith('#')][0]
+                if len(first_non_comment_line) < 1:
+                    raise ValueError('Unable to Extracr Index.m3u8!')
+
+                path_url = first_non_comment_line[0]
+                index_url = '/'.join(a.split('/')[:-1]).rstrip('/') + "/" + path_url.lstrip('/')
+                return index_url
 
         new_videos = []
         total_size = 0
@@ -104,7 +109,7 @@ async def pornhub_handler():
 
             clear()
 
-            print(f'{idx}. Extracting details for "{Fore.LIGHTBLUE_EX}{video['url'].split('/')[-1]}{Fore.RESET}" \n[{len(videos) - idx} remaning, total: {len(videos)}]')
+            print(f'{idx}. Extracting details for "{video['url'].split('/')[-1]}" \n[{len(videos) - idx} remaning, total: {len(videos)}]')
             try:
                 full_info = await extract_video(sem, pornhub_session, video['url'].replace('https://www.pornhub.org', ''))
                 new_videos.append(full_info)
@@ -133,7 +138,7 @@ async def pornhub_handler():
             clear()
             temp = os.path.join(INITIAL_PATH, f'{uuid4()}__initial.json')
             try:
-                ui = input(f'{Fore.LIGHTYELLOW_EX}Enter link ["list" for multiple links]{Fore.RESET}: ').strip()
+                ui = input(f'Enter link ["list" for multiple links]: ').strip()
                 
                 if ui.lower().strip() == "list":
                     urls = [{'url': url} for url in read_until('Enter link', validator=is_video_link)]
@@ -166,7 +171,7 @@ async def xnxx_handler():
     async def download_videos(sem, session: ClientSession, videos: list, root_download_path: str):
         os.makedirs(root_download_path, exist_ok=True)
         download_dir = root_download_path
-        print(f'Downloading "{Fore.LIGHTRED_EX}{videos.__len__()}{Fore.RESET}" videos in "{Fore.LIGHTCYAN_EX}{os.path.abspath(download_dir)}{Fore.RESET}"')
+        print(f'Downloading "{videos.__len__()}" videos in "{os.path.abspath(download_dir)}"')
 
         new_videos = []
         total_size = 0
@@ -175,7 +180,7 @@ async def xnxx_handler():
 
             clear()
 
-            print(f'{idx}. Extracting details for "{Fore.LIGHTBLUE_EX}{video['url'].split('/')[-1] or video['url'].split('/')[-2]}{Fore.RESET}" \n[{len(videos) - idx} remaning, total: {len(videos)}]')
+            print(f'{idx}. Extracting details for "{video['url'].split('/')[-1] or video['url'].split('/')[-2]}" \n[{len(videos) - idx} remaning, total: {len(videos)}]')
             try:
                 full_info = await extract_video_info(sem, session, video['url'])
                 new_videos.append(full_info)
@@ -203,7 +208,7 @@ async def xnxx_handler():
             clear()
             temp = os.path.join(INITIAL_PATH, f'{uuid4()}__initial.json')
             try:
-                ui = input(f'{Fore.LIGHTYELLOW_EX}Enter link ["list" for multiple links]{Fore.RESET}: ').strip()
+                ui = input(f'Enter link ["list" for multiple links]: ').strip()
                 
                 if ui.lower().strip() == "list":
                     urls = [{'url': url} for url in read_until('Enter link', validator=is_video_link)]

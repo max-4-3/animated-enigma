@@ -7,7 +7,9 @@ from typing import Any
 
 try:
     from .consts import LOG_FORMAT, LOG_PATH, DATE_FORMAT
+    from .utils import sanitize_filename
 except:
+    def sanitize_filename(a): return a
     LOG_PATH = os.path.join(os.getcwd(), "logs")
     LOG_FORMAT = "[%(asctime)s] [%(levelname)s] [PID:%(process)d] [%(threadName)s] [%(funcName)s@%(filename)s:%(lineno)d] - %(message)s"
     DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -104,6 +106,7 @@ async def download_segment(sem, session: aiohttp.ClientSession, segment_url: str
 
 async def download_video(sem: asyncio.Semaphore, session: aiohttp.ClientSession, video_title: str, video_url: str, video_ext: str, download_dir: str, cleanup: bool = True, re_encode: bool = False, download_sem_limit: int = 4, make_subfolder: bool = True, subfoler_name: str = "videos"):
     async with sem:
+        video_title = sanitize_filename(video_title)
         download_sem = asyncio.Semaphore(download_sem_limit)
         random_name = str(uuid4())
         start = time.perf_counter()
@@ -214,7 +217,8 @@ async def download_video(sem: asyncio.Semaphore, session: aiohttp.ClientSession,
                 else:
                     ConcatLog.info(f'Re-encoding successful for video: {video_title}')
             else:
-                os.rename(output_file_temp, output_file)
+                if not os.path.exists(output_file):
+                    os.rename(output_file_temp, output_file)
 
         except Exception as e:
             Log.error(f'Error processing video {video_title}: {str(e)}')

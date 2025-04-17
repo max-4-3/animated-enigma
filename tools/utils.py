@@ -1,4 +1,5 @@
-import os, json, asyncio
+import os, json, asyncio, re
+from rich import print
 
 def load_data(fp=os.path.join(os.path.split(os.path.split(__file__)[0])[0], 'config.json')):
     if not os.path.exists(fp):
@@ -89,6 +90,35 @@ def read_until(
             if exit_on_error:
                 return data
             continue
+
+def sanitize_filename(filename):
+    """
+    Sanitizes a filename for Windows by replacing restricted characters.
+    """
+    # Define restricted characters and their replacements
+    restricted_chars = {
+        '<': '_lt_',  # less than
+        '>': '_gt_',  # greater than
+        ':': '_',     # colon
+        '"': '_',     # double quote
+        '/': '_',     # forward slash
+        '\\': '_',    # backslash
+        '|': '_',     # vertical bar
+        '?': '_',     # question mark
+        '*': '_',     # asterisk
+    }
+
+    # Replace restricted characters
+    for char, replacement in restricted_chars.items():
+        filename = filename.replace(char, replacement)
+
+    # Remove any trailing dots or spaces, which are not allowed in Windows filenames
+    filename = filename.strip().rstrip('.')
+
+    # Remove any control characters (ASCII 0-31)
+    filename = re.sub(r'[\x00-\x1f]', '', filename)
+
+    return filename
 
 def is_user_quit() -> bool:
     return input('Do you want to quit?: ').lower().strip() in ('yes', 'y')
