@@ -61,10 +61,11 @@ def read_until(
             if clear_screen:
                 os.system('cls' if os.name == 'nt' else 'clear')
             
-            user_input = input(
+            print(
                 f"[{len(data)}] {starting_prompt}\n"
                 f"Type \"{stop}\" to stop: "
-            ).strip()
+            )
+            user_input = input().strip()
             
             # Check for stop command
             test_input = user_input if case_sensitive else user_input.lower()
@@ -76,13 +77,13 @@ def read_until(
                 continue
             
             if not validator(user_input):
-                print(f"Invalid input [{user_input}] does not meet requirements")
-                input("Press Enter to continue...\n")
+                print(f"Invalid input [{user_input}] does not meet requirements\nPress Enter to continue...")
+                input("")
                 continue
 
             if url and not user_input.startswith(('http://', 'https://')):
-                print(f"Invalid URL - must start with http:// or https://")
-                input("Press Enter to continue...")
+                print(f"Invalid URL - must start with http:// or https://\nPress Enter to continue...")
+                input("")
                 continue
                 
             data.append(user_input)
@@ -121,4 +122,5 @@ def sanitize_filename(filename):
     return filename
 
 def is_user_quit() -> bool:
-    return input('Do you want to quit?: ').lower().strip() in ('yes', 'y')
+    print("Do you want to quit?: ")
+    return input('').lower().strip() in ('yes', 'y')

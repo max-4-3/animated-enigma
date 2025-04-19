@@ -38,11 +38,13 @@ async def okxxx_handler():
                 total_size += download_size
                 total_time += download_time
             except KeyboardInterrupt:
-                if input('Quit Downloading?: ').lower().strip() in ['yes', 'y', '']:
+                print('Quit Downloading?: ', end="")
+                if input('').lower().strip() in ['yes', 'y', '']:
                     break
-
             except Exception as e:
-                print(f'Got an error: {e}')
+                print(f'Unable to complete download: \n{"-"*10}\n{e or "Unknown Error"}\n{"-"*10}')
+                print('Press enter to move on...')
+                input("")
             finally:
                 await asyncio.sleep(1)
 
@@ -53,7 +55,8 @@ async def okxxx_handler():
             clear()
             temp = os.path.join(INITIAL_PATH, f'{uuid4()}__initial.json')
             try:
-                ui = input(f'Enter link ["list" for multiple links]: ').strip()
+                print("Enter link [\"list\" for multiple links]: ", end='')
+                ui = input('').strip()
                 
                 if ui.lower().strip() == "list":
                     urls = [{'url': url} for url in read_until('Enter link', validator=is_video_link)]
@@ -122,11 +125,13 @@ async def pornhub_handler():
                 total_size += download_size
                 total_time += download_time
             except KeyboardInterrupt:
-                if input('Quit Downloading?: ').lower().strip() in ['yes', 'y', '']:
+                print('Quit Downloading?: ', end="")
+                if input('').lower().strip() in ['yes', 'y', '']:
                     break
             except Exception as e:
-                print(f'Unable to complete download: \n{"-"*10}\n{e}\n{"-"*10}')
-                input('Press enter to move on...')
+                print(f'Unable to complete download: \n{"-"*10}\n{e or "Unknown Error"}\n{"-"*10}')
+                print('Press enter to move on...')
+                input("")
             finally:
                 await asyncio.sleep(1 if idx % 10 != 0 else 3)
 
@@ -138,7 +143,8 @@ async def pornhub_handler():
             clear()
             temp = os.path.join(INITIAL_PATH, f'{uuid4()}__initial.json')
             try:
-                ui = input(f'Enter link ["list" for multiple links]: ').strip()
+                print("Enter link [\"list\" for multiple links]: ", end='')
+                ui = input('').strip()
                 
                 if ui.lower().strip() == "list":
                     urls = [{'url': url} for url in read_until('Enter link', validator=is_video_link)]
@@ -193,11 +199,13 @@ async def xnxx_handler():
                 total_size += download_size
                 total_time += download_time
             except KeyboardInterrupt:
-                if input('Quit Downloading?: ').lower().strip() in ['yes', 'y', '']:
+                print('Quit Downloading?: ', end="")
+                if input('').lower().strip() in ['yes', 'y', '']:
                     break
-
             except Exception as e:
-                print(f'Got an error: {e}')
+                print(f'Unable to complete download: \n{"-"*10}\n{e or "Unknown Error"}\n{"-"*10}')
+                print('Press enter to move on...')
+                input("")
             finally:
                 await asyncio.sleep(1)
 
@@ -208,7 +216,8 @@ async def xnxx_handler():
             clear()
             temp = os.path.join(INITIAL_PATH, f'{uuid4()}__initial.json')
             try:
-                ui = input(f'Enter link ["list" for multiple links]: ').strip()
+                print("Enter link [\"list\" for multiple links]: ", end='')
+                ui = input('').strip()
                 
                 if ui.lower().strip() == "list":
                     urls = [{'url': url} for url in read_until('Enter link', validator=is_video_link)]
@@ -246,7 +255,8 @@ async def main():
     while True:
         clear()
         print('\n'.join(f"{i}. {name}" for i, name in enumerate(available_domains.keys(), start=1)))
-        userinput = input('Choose From Above: ')
+        print('Choose from above: ', end='')
+        userinput = input('')
 
         if userinput.lower().strip() == 'exit':
             return

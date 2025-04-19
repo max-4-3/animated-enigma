@@ -19,12 +19,12 @@ def setup_task_loggers():
     os.makedirs(LOG_PATH, exist_ok=True)
     
     now = datetime.now()
-    date_suffix = f"{now.month:02d}-{now.day:02d}-{now.year:02d}"
+    date_suffix = f"{now.month:02d}-{now.day:02d}-{now.year:02d}-{now.hour:02d}"
     
     # Main logger (keep your existing one)
     main_logger = logging.getLogger(__name__)
     main_handler = logging.FileHandler(
-        os.path.join(LOG_PATH, os.path.split(__file__)[1] + f"-{date_suffix}.log")
+        os.path.join(LOG_PATH, "main" + f"-{date_suffix}.log")
     )
     main_handler.setFormatter(logging.Formatter(LOG_FORMAT, DATE_FORMAT))
     main_logger.addHandler(main_handler)
@@ -141,7 +141,7 @@ async def download_video(sem: asyncio.Semaphore, session: aiohttp.ClientSession,
 
                 for i, line in enumerate(raw.splitlines(), start=1):
                     if not line or line.startswith('#'):
-                        GatherLog.debug(f'Skipping line {i}: Empty or comment')
+                        GatherLog.debug(f'Skipping line {i}: Empty or comment [{ line = }]')
                         continue
                     
                     # Handle segment link construction
@@ -190,7 +190,6 @@ async def download_video(sem: asyncio.Semaphore, session: aiohttp.ClientSession,
                     if line_match:
                         try:
                             file_no = int(line_match.group(2)) - concate_bar.n
-                            ConcatLog.debug(f'[Concat] Concatenated {file_no} file [raw = {line.decode(errors='ignore').replace('\n', '\\n')}]')
                             concate_bar.update(file_no + 1)
                         except Exception as e:
                             ConcatLog.error(f'Unable to gather file no from "{line.decode(errors='ignore').replace('\n', '\\n')}": {e}')
@@ -226,7 +225,7 @@ async def download_video(sem: asyncio.Semaphore, session: aiohttp.ClientSession,
         finally:
             # Cleanup the temp files if 'cleanup'
             if cleanup and os.path.exists(os.path.join(download_dir, video_title + video_ext)):
-                Log.info(f'Cleaning temp files for video: {video_title}')
+                Log.info(f'Cleaning temp files for video: {video_title} [{ temp_dir = }; { segement_infofile = }; { output_file_temp = }]')
                 try:
                     shutil.rmtree(temp_dir, True)
                     os.remove(segement_infofile)
