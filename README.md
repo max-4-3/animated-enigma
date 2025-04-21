@@ -1,11 +1,13 @@
 # Scraper & Downloaders
 
 Currently it only _Supports_:
-  - [XNXX](https://xnxx.health/)
-  - [OkXxx](https://okxxx2.com/)
-  - [Pornhub](https://www.pornhub.com)
+
+- [XNXX](https://xnxx.health/)
+- [OkXxx](https://okxxx2.com/)
+- [Pornhub](https://www.pornhub.com)
 
 Video Data Struct ( Roufghly ):
+
 ```json
 {
     "title": "Title of the video",
