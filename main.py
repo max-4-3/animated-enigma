@@ -3,7 +3,7 @@ from rich import print
 from uuid import uuid4
 from aiohttp import ClientSession
 
-from tools.utils import clear, read_until, save_data, is_user_quit
+from tools.utils import clear, read_until, save_data, is_user_quit, sanitize_filename
 from tools.downloader import download_video
 from config import *
 
@@ -30,9 +30,12 @@ async def okxxx_handler():
                 full_info = await extract_video_info(sem, session, video['url'])
                 new_videos.append(full_info)
 
+                # Save the data for quick debugging
+                save_data(full_info, os.path.join(INITIAL_PATH, sanitize_filename(full_info["title"]) + ".json"))
+
                 print(f'Downloading "{full_info['title']}"...')
                 download_url = list(full_info['media'].values())[-1]['url']
-                download_size, download_time = await download_video(sem, session, full_info['title'], download_url, '.mp4', download_dir)
+                download_size, download_time = await download_video(sem, session, f"{full_info['title']} [okxxx]", download_url, '.mp4', download_dir)
                 print(f'Completed Download in {download_time}s [{download_size / (1024**2):.2f}MB]')
 
                 total_size += download_size
@@ -62,10 +65,10 @@ async def okxxx_handler():
                     urls = [{'url': url} for url in read_until('Enter link', validator=is_video_link)]
                 elif ui.lower().strip() == "exit":
                     return
+                elif is_video_link(ui):
+                    urls = [{'url': ui}]
                 elif is_page_link(ui):
                     urls = await extract_videos_from_webpage(QUERY_SEM, session, ui.strip())
-                elif is_video_link:
-                    urls = [{'url': ui}]
                 elif not is_valid_link(ui):
                     raise ValueError(f'Invalid Url! [{ ui = }]')
 
@@ -117,9 +120,12 @@ async def pornhub_handler():
                 full_info = await extract_video(sem, pornhub_session, video['url'].replace('https://www.pornhub.org', ''))
                 new_videos.append(full_info)
 
+                # Save the data for quick debugging
+                save_data(full_info, os.path.join(INITIAL_PATH, sanitize_filename(full_info["title"]) + ".json"))
+
                 print(f'Downloading "{full_info['title']}" [{full_info['duration']}s]...')
                 download_url = await get_index_url(max(full_info['resolution'].items(), key=lambda x: x[0])[1]['url'].replace('https://www.pornhub.org', ''))
-                download_size, download_time = await download_video(sem, download_session, full_info['title'], download_url, '.mp4', download_dir)
+                download_size, download_time = await download_video(sem, download_session, f"{full_info['title']} [pornhub]", download_url, '.mp4', download_dir)
                 print(f'Completed Download in {download_time}s [{download_size / (1024**2):.2f}MB]')
 
                 total_size += download_size
@@ -150,10 +156,10 @@ async def pornhub_handler():
                     urls = [{'url': url} for url in read_until('Enter link', validator=is_video_link)]
                 elif ui.lower().strip() == "exit":
                     return
-                elif is_page_link(ui):
-                    urls = await extract_videos_from_webpage(QUERY_SEM, session, ui.strip())
                 elif is_video_link:
                     urls = [{'url': ui}]
+                elif is_page_link(ui):
+                    urls = await extract_videos_from_webpage(QUERY_SEM, session, ui.strip())
                 elif not is_valid_link(ui):
                     raise ValueError(f'Invalid Url! [{ ui = }]')
 
@@ -173,6 +179,7 @@ async def pornhub_handler():
 async def xnxx_handler():
     from xnxx import is_valid_link, is_page_link, is_video_link, make_session
     from xnxx.extractors.video import extract_video_info
+    from xnxx.extractors.page import get_videos_from_webpage
     
     async def download_videos(sem, session: ClientSession, videos: list, root_download_path: str):
         os.makedirs(root_download_path, exist_ok=True)
@@ -191,9 +198,15 @@ async def xnxx_handler():
                 full_info = await extract_video_info(sem, session, video['url'])
                 new_videos.append(full_info)
 
+                # Save the data for quick debugging
+                try:
+                    save_data(full_info, os.path.join(INITIAL_PATH, sanitize_filename(full_info["title"]) + ".json"))
+                except:
+                    pass
+
                 print(f'Downloading "{full_info['title']}"...')
                 download_url = list(full_info['media'].values())[0]['url']
-                download_size, download_time = await download_video(sem, session, full_info['title'], download_url, '.mp4', download_dir)
+                download_size, download_time = await download_video(sem, session, f"{full_info['title']} [xnxx]", download_url, '.mp4', download_dir)
                 print(f'Completed Download in {download_time}s [{download_size / (1024**2):.2f}MB]')
 
                 total_size += download_size
@@ -226,8 +239,7 @@ async def xnxx_handler():
                 elif is_video_link(ui):
                     urls = [{'url': ui}]
                 elif is_page_link(ui):
-                    urls = []
-                    # urls = await extract_videos_from_webpage(QUERY_SEM, session, ui.strip())
+                    urls = await get_videos_from_webpage(QUERY_SEM, session, ui.strip())
                 elif not is_valid_link(ui):
                     raise ValueError(f'Invalid Url! [{ ui = }]')
 

@@ -1,6 +1,7 @@
 import os, json, asyncio, re
 from rich import print
 
+
 def load_data(fp=os.path.join(os.path.split(os.path.split(__file__)[0])[0], 'config.json')):
     if not os.path.exists(fp):
         return "", "", asyncio.Semaphore(1), asyncio.Semaphore(2) 
