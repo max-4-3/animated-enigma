@@ -1,144 +1,328 @@
-import aiofiles
-import aiohttp
-import asyncio
-import os
-import json, time
+import aiohttp, asyncio, argparse, os, sys, aiofiles, time, shutil, logging, re, random
+from colorama import Fore
 from uuid import uuid4
-from tqdm.asyncio import tqdm
-from fake_useragent import UserAgent
+from tqdm import tqdm
+from datetime import datetime
+from typing import Any
 
-total = 0
+def sanitize_filename(filename):
+    """
+    Sanitizes a filename for Windows by replacing restricted characters.
+    """
+    # Define restricted characters and their replacements
+    restricted_chars = {
+        '<': '_lt_',  # less than
+        '>': '_gt_',  # greater than
+        ':': '_',     # colon
+        '"': '_',     # double quote
+        '/': '_',     # forward slash
+        '\\': '_',    # backslash
+        '|': '_',     # vertical bar
+        '?': '_',     # question mark
+        '*': '_',     # asterisk
+    }
 
-def save_data(d, fp):
-    with open(fp, 'w', errors='ignore', encoding='utf-8') as file:
-        json.dump(d, file, indent=4, ensure_ascii=False)
+    # Replace restricted characters
+    for char, replacement in restricted_chars.items():
+        filename = filename.replace(char, replacement)
 
-async def concat_segments(file_lists, save_path, save_name):
-    os.makedirs(save_path, exist_ok=True)
+    # Remove any trailing dots or spaces, which are not allowed in Windows filenames
+    filename = filename.strip().rstrip('.')
 
-    # Save final concatenated file
-    filepath = os.path.join(save_path, save_name)
+    # Remove any control characters (ASCII 0-31)
+    filename = re.sub(r'[\x00-\x1f]', '', filename)
 
-    # Create a temporary file for the list of segments
-    temp_concate_file = os.path.join(save_path, f'temp_concate_file_{uuid4()}.txt')
-    with open(temp_concate_file, 'w', errors='ignore') as file:
-        file.write('\n'.join([f'file \'{os.path.abspath(f)}\'' for f in file_lists if os.path.exists(f)]))
+    return filename
 
-    # Command for concatenation using ffmpeg
-    command = [
-        'ffmpeg', '-f', 'concat', '-safe', '0', '-i', temp_concate_file,
-        '-hide_banner', '-fflags', '+genpts', '-movflags', '+faststart', '-c', 'copy', filepath
+LOG_PATH = os.path.join(os.getcwd(), "logs")
+LOG_FORMAT = "[%(asctime)s] [%(levelname)s] [PID:%(process)d] [%(threadName)s] [%(funcName)s@%(filename)s:%(lineno)d] - %(message)s"
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+# Set up loggers for different tasks
+def setup_task_loggers():
+    os.makedirs(LOG_PATH, exist_ok=True)
+    
+    now = datetime.now()
+    date_suffix = f"{now.month:02d}-{now.day:02d}-{now.year:02d}-{now.hour:02d}"
+    
+    # Main logger (keep your existing one)
+    main_logger = logging.getLogger(__name__)
+    main_handler = logging.FileHandler(
+        os.path.join(LOG_PATH, "main" + f"-{date_suffix}.log")
+    )
+    main_handler.setFormatter(logging.Formatter(LOG_FORMAT, DATE_FORMAT))
+    main_logger.addHandler(main_handler)
+    main_logger.setLevel(logging.DEBUG)
+    
+    # Logger for gathering segments
+    gather_logger = logging.getLogger("gathering_segments")
+    gather_handler = logging.FileHandler(
+        os.path.join(LOG_PATH, f"gathering-segments-{date_suffix}.log")
+    )
+    gather_handler.setFormatter(logging.Formatter(LOG_FORMAT, DATE_FORMAT))
+    gather_logger.addHandler(gather_handler)
+    gather_logger.setLevel(logging.DEBUG)
+    
+    # Logger for downloading segments
+    download_logger = logging.getLogger("downloading_segments")
+    download_handler = logging.FileHandler(
+        os.path.join(LOG_PATH, f"downloading-segments-{date_suffix}.log")
+    )
+    download_handler.setFormatter(logging.Formatter(LOG_FORMAT, DATE_FORMAT))
+    download_logger.addHandler(download_handler)
+    download_logger.setLevel(logging.DEBUG)
+    
+    # Logger for concatenating segments
+    concat_logger = logging.getLogger("concatenating_segments")
+    concat_handler = logging.FileHandler(
+        os.path.join(LOG_PATH, f"concatenating-segments-{date_suffix}.log")
+    )
+    concat_handler.setFormatter(logging.Formatter(LOG_FORMAT, DATE_FORMAT))
+    concat_logger.addHandler(concat_handler)
+    concat_logger.setLevel(logging.DEBUG)
+    
+    return main_logger, gather_logger, download_logger, concat_logger
+
+# Initialize loggers at module level
+Log, GatherLog, DownloadLog, ConcatLog = setup_task_loggers()
+
+# Then in your functions, use the appropriate logger:
+async def download_segment(sem, session: aiohttp.ClientSession, segment_url: str, download_dir: str, pbar: tqdm, retry_limit: int = 5, fixed_backoff: int | float = 2.0):
+    async with sem:
+        try:
+            DownloadLog.debug(f'GET: { segment_url = }; { download_dir = }')        
+            segment_name = segment_url.split('/')[-1].split('?')[0] or segment_url.split("/")[-1]
+            download_path = os.path.join(download_dir, segment_name)
+
+            is_succesfull = False
+            for i in range(1, retry_limit + 1):
+                try:
+                    async with session.get(segment_url) as r:
+                        r.raise_for_status()
+                        DownloadLog.info(f'GET: { segment_url = } [{ r.status = }]')
+
+                        DownloadLog.debug(f'{ download_path = }; { segment_name = }')
+                        with tqdm(total=int(r.headers.get('content-length', 0)), unit='B', unit_scale=True, desc=f'\t|-> Downloading "{segment_name}"'.expandtabs(4), leave=False, position=1) as segment_pbar:
+                            async with aiofiles.open(download_path, 'wb') as file:
+                                while chunk := await r.content.read(1024 * 1024 * 40):
+                                    await file.write(chunk)
+                                    segment_pbar.update(len(chunk))
+
+                        DownloadLog.info(f'File Saved at { download_path = } under { segment_name = } [ {os.path.getsize(download_path) if os.path.exists(download_path) else 0} ]')
+                        await asyncio.sleep(0.1)
+                        pbar.update(1)
+
+                        is_succesfull = True
+                        return download_path
+                except Exception as e:
+                    retry_after = fixed_backoff * i + random.random()
+                    status = getattr(r, "status", "N/A")
+                    DownloadLog.error(f'[Failed] GET: { segment_url = } [{status}] [exception = {e}] [{ retry_after = }; { retry_limit - i =  }]')
+                    await asyncio.sleep(retry_after)
+
+            if not is_succesfull:
+                raise aiohttp.ServerConnectionError(f'Unable to Retrive Data from {segment_url}!')
+
+        except Exception as e:
+            print(f'Unable to download segement "{Fore.RED}{segment_name}{Fore.RESET}"!')
+            DownloadLog.error(f'[Download Segement Error] { e = }; { segment_name = }; { download_path = }; { segment_url = }')
+            return ''
+
+async def download_video(sem: asyncio.Semaphore, session: aiohttp.ClientSession, video_title: str, video_url: str, video_ext: str, download_dir: str, cleanup: bool = True, re_encode: bool = False, download_sem_limit: int = 4, make_subfolder: bool = True, subfoler_name: str = "videos"):
+    async with sem:
+        video_title = sanitize_filename(video_title)
+        download_sem = asyncio.Semaphore(download_sem_limit)
+        random_name = str(uuid4())
+        start = time.perf_counter()
+
+        if make_subfolder:
+            download_dir = os.path.join(download_dir, 'videos' if subfoler_name is None else subfoler_name)
+
+        # File Setup
+        temp_dir = os.path.join(download_dir, 'temp_' + random_name)
+        segement_infofile = os.path.join(download_dir, f'{random_name}_seginfo.txt')
+        output_file_temp = os.path.join(download_dir, random_name + '_' + video_title + video_ext)
+        Log.debug(f'[File Setup] { temp_dir = }; { segement_infofile = }; { output_file_temp = }')
+
+        os.makedirs(temp_dir, exist_ok=True)
+        m3u8_urls = []
+        
+        try:
+            GatherLog.info(f'Parsing index for video: {video_title} [ { video_url = } ]')
+            async with session.get(video_url) as m3u8_r:
+                GatherLog.debug(f'GET: {video_url} [{ m3u8_r.status = }; { m3u8_r.headers['content-type'] = }]')
+                m3u8_r.raise_for_status()
+                raw = await m3u8_r.text()
+
+                data = ''
+                for line in raw.splitlines():
+                    if line.startswith('#'):
+                        data += ('\n' if line[0] != '\n' else '') + line
+
+                # Remove trailing slash if present
+                base_url = video_url.rsplit('/', 1)[0].rstrip('/')
+                m3u8_urls = []
+
+                for i, line in enumerate(raw.splitlines(), start=1):
+                    if not line or line.startswith('#'):
+                        GatherLog.debug(f'Skipping line {i}: Empty or comment [{ line = }]')
+                        continue
+                    
+                    # Handle segment link construction
+                    if line.startswith(('http://', 'https://')):
+                        segment_full_link = line
+                    else:
+                        segment_full_link = f"{base_url}/{line.lstrip('/')}"
+                    
+                    segment_name = segment_full_link.split('/')[-1].split('?')[0] or segment_full_link.split("/")[-1]
+                    
+                    GatherLog.debug(f'Adding segment {i}: {segment_name} from {segment_full_link}')
+                    m3u8_urls.append((segment_name, segment_full_link))
+
+                GatherLog.info(f'{len(m3u8_urls)} segments url found for video: {video_title}')
+
+            # Download all segments
+            with tqdm(total=len(m3u8_urls), position=0, desc='Segment progress', unit='seg', colour='green') as pbar:
+                tasks = []
+                filenames = []
+                for name, link in m3u8_urls:
+                    tasks.append(asyncio.create_task(download_segment(download_sem, session, link, temp_dir, pbar)))
+                    filenames.append(os.path.join(temp_dir, name))
+
+                await asyncio.gather(*tasks)
+
+            # Create the segmentInfo.txt file with correct formating
+            with open(segement_infofile, 'w') as file:
+                file.write('\n'.join([f'file \'{a.replace("\\", "/")}\'' for a in filenames if a]))
+
+            # Concate (e.g. combine) all segments
+            command = ['ffmpeg', '-f', 'concat', '-safe', '0', '-i', os.path.abspath(segement_infofile), '-c', 'copy', '-y', '-hide_banner', '-loglevel', 'debug', '-fflags', '+genpts', os.path.abspath(output_file_temp)]
+            ConcatLog.info(f'Concating segments for video: {video_title} [{ command = }]')
+            proccess = await asyncio.create_subprocess_exec(*command, stderr=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE)
+
+            # Progress bar
+            total_files = len([file for file in open(segement_infofile, 'r').read().splitlines() if file.startswith('file')])
+            line_match_pattern = re.compile(r'\[concat\s+?@\s+?(\w)+\]\s+?file:(\d+)\s+?stream:\d+?\s+?pts:\d+\s+?')
+
+            with tqdm(total=total_files, desc='Concatenating', unit='file', unit_divisor=10, unit_scale=False) as concate_bar:
+                while True:
+                    line = await proccess.stderr.readline()
+                    if not line:
+                        break
+
+                    line_match = line_match_pattern.match(line.decode(errors='ignore'))
+                    if line_match:
+                        try:
+                            file_no = int(line_match.group(2)) - concate_bar.n
+                            concate_bar.update(file_no + 1)
+                        except Exception as e:
+                            ConcatLog.error(f'Unable to gather file no from "{line.decode(errors='ignore').replace('\n', '\\n')}": {e}')
+                            concate_bar.update(1)
+
+            await proccess.wait()
+
+            if proccess.returncode != 0:
+                ConcatLog.error(f'Error occurred during concat for video {video_title}: \n{(await proccess.stderr.read()).decode(errors='ignore')[:-200]}\n')
+                raise OSError('Unable to Concate file!')
+            else:
+                ConcatLog.info(f'Concat successful for video: {video_title}')
+
+            # Re-encode for smoother playback if 're_encode'
+            output_file = os.path.join(download_dir, video_title + video_ext)
+            if re_encode:
+                command = ['ffmpeg', '-i', output_file_temp, '-hide_banner', '-c:v', 'libx264', '-vf', '"format=yuv420p"', '-preset', 'medium', '-c:a', 'aac', '-b:a', '192k', output_file]
+                ConcatLog.info(f'Re-encoding video: {video_title} [ { command = } ]')
+                proccess = await asyncio.create_subprocess_exec(*command, stderr=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE)
+                _, stderr = await proccess.communicate()
+
+                if proccess.returncode != 0:
+                    ConcatLog.error(f'Error occurred during re-encoding for video {video_title}: {stderr.decode()}')
+                else:
+                    ConcatLog.info(f'Re-encoding successful for video: {video_title}')
+            else:
+                if not os.path.exists(output_file):
+                    os.rename(output_file_temp, output_file)
+
+        except Exception as e:
+            Log.error(f'Error processing video {video_title}: {str(e)}')
+            raise
+        finally:
+            # Cleanup the temp files if 'cleanup'
+            if cleanup and os.path.exists(os.path.join(download_dir, video_title + video_ext)):
+                Log.info(f'Cleaning temp files for video: {video_title} [{ temp_dir = }; { segement_infofile = }; { output_file_temp = }]')
+                try:
+                    shutil.rmtree(temp_dir, True)
+                    os.remove(segement_infofile)
+                    if os.path.exists(output_file_temp):
+                        os.remove(output_file_temp)
+                    Log.info(f'Cleanup successful for video: {video_title}')
+                except Exception as e:
+                    Log.error(f'Error occurred during cleanup for video {video_title}: {e}')
+            else:
+                Log.info(f'Skipping cleaning temp files for video: {video_title}')
+
+        end = time.perf_counter()
+        duration = round(end - start, 2)
+        file_size = os.path.getsize(output_file) if os.path.exists(output_file) else 0
+        Log.info(f'Completed processing video: {video_title} | Size: {file_size} bytes | Took: {duration} seconds')
+        return file_size, duration
+
+def parse_arguments() -> list[str | Any | None]:
+    if len(sys.argv) == 1:  # No Arguments Given
+        raise ValueError(
+            'Insufficient Arguments!\n'
+            'Args: <url> [video_name(def = untitled_video)] [video_ext(def = mp4)] '
+            '[download_dir(def = cwd)] [sub_dir(def = None; None = no dir will be made)]\n'
+            '<> = Required; [] = Optional'
+        )
+
+    # Check if any -- or - options were used
+    if any(arg.startswith('-') for arg in sys.argv[1:]):
+        parser = argparse.ArgumentParser(description="Video downloader arguments")
+        parser.add_argument("url", help="Video URL")
+        parser.add_argument("-t", "--video-title", default="untitled_video", help="Title of the video")
+        parser.add_argument("-e", "--ext", default="mp4", help="Video extension")
+        parser.add_argument("-d", "--download-dir", default=os.getcwd(), help="Download directory")
+        parser.add_argument("-s", "--subfolder-name", default=None, help="Optional subfolder name")
+
+        args = parser.parse_args()
+        return [args.url, args.video_title, args.ext, args.download_dir, args.subfolder_name]
+    
+    # Fallback: classic positional argument mode
+    def try_to_get(index: int, default = None):
+        try:
+            value = sys.argv[index]
+            return value if value.strip() else default
+        except IndexError:
+            return default
+    
+    return [
+        try_to_get(1),
+        try_to_get(2, "untitled_video"),
+        try_to_get(3, "mp4"),
+        try_to_get(4, os.getcwd()),
+        try_to_get(5, None)
     ]
 
-    # Run the ffmpeg command asynchronously
-    process = await asyncio.create_subprocess_exec(
-        *command,
-        stderr=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE
-    )
-
-    # Monitor process output for progress
-    while True:
-        line = await process.stderr.readline()
-        if not line:
-            break
-
-        line = line.decode('utf-8', errors='ignore')
-        if 'frame=' in line or 'size=' in line or 'time=' in line:
-            print(line.strip(), end='\r')  # Display progress in place
-
-    # Wait for the process to finish
-    _, stderr = await process.communicate()
-    print()
-
-    # Handle process exit
-    if process.returncode != 0:
-        print(f'Unable to concatenate segments: {stderr.decode()}')
-    else:
-        print(f'Concatenation successful!\nFile saved at: {filepath}')
-
-    # Clean up the temporary file
-    try:
-        os.remove(temp_concate_file)
-        for file in file_lists:
-            if not os.path.exists(file):
-                continue
-            else:
-                try:
-                    os.remove(file)
-                except:
-                    pass
-    except OSError as e:
-        print(f"Warning: Unable to delete temp file: {e}")
-
-async def download_segment(sem, session: aiohttp.ClientSession, url, name, path, top_level_bar: tqdm, **kwargs):
-    async with sem:
-        global total
-        try:
-            async with session.get(url, **kwargs) as r:
-                r.raise_for_status()
-                file_path = os.path.join(path, name)
-                async with aiofiles.open(file_path, 'wb') as file:
-                    async for chunk in r.content.iter_chunked(1024 * 1024 * 10):  # 10 MB chunks
-                        await file.write(chunk)
-                        total += len(chunk)
-                        top_level_bar.set_postfix_str(f'Downloaded: {total / (1024**2):.2f}MB', refresh=True)
-                top_level_bar.update(1)
-                return (os.path.getsize(file_path) if os.path.exists(file_path) else 0)
-        except Exception as e:
-            print(f'Unable to download "{name}": {e}')
-            return 0
-
-async def download(session, index_url, path):
-    url_list = []
-    name_list = []
-    seg_path = os.path.join(path, "segments")
-    os.makedirs(seg_path, exist_ok=True)
-
-    async with session.get(index_url) as r:
-        r.raise_for_status()
-        data = await r.text()
-
-    count = 1
-    for line in data.splitlines():
-        if not line.strip() or line.startswith('#'):
-            continue
-        url = line if line.startswith('http') else f"{index_url.rsplit('/', 1)[0]}/{line}"
-        url_list.append(url)
-        name_list.append(f'segment-{count}.ts')
-        count += 1
-
-    print(f"Found {len(url_list)} segments")
-
-    bar_format = "[{n}/{total}] {desc}: |{bar}| {percentage:3.0f}% ({rate_fmt}{postfix})"
-    sem = asyncio.Semaphore(4)
-    start = time.perf_counter()
-    with tqdm(total=len(url_list), desc='Downloading', unit='seg', position=0, colour='blue', bar_format=bar_format) as bar:
-        tasks = [asyncio.create_task(download_segment(sem, session, url, name, seg_path, bar)) for name, url in zip(name_list, url_list)]
-        sizes = await asyncio.gather(*tasks)
-    end = time.perf_counter()
-    total_size = sum(sizes)
-
-    files = [k for k in name_list if os.path.exists(os.path.join(seg_path, k))]
-
-    # Save segment_info.txt for cancation
-    segment_info = os.path.join(path, f'{uuid4()}_segement_info.txt')
-    if input('Segements downloaded!\nConcate them?: ').lower().strip() in ['no', 'n']:
-        with open(segment_info, 'w', errors='ignore', encoding='utf-8') as file:
-            file.write('\n'.join([f'file \'{os.path.abspath(f)}\'' for f in files]))
-    else:
-        await concat_segments(files, os.path.expanduser('~/Videos/Movies/'), f'{uuid4()}.mp4')
-
-    print(f'Total downloaded size: {total_size / (1024 ** 2):.2f} MB [{end - start:.2f}s]')
-    print(f'File list saved at "{os.path.abspath(segment_info)}"')
-
 async def main():
-    async with aiohttp.ClientSession(headers={'User-Agent': UserAgent().random}) as session:
-        while True:
-            index_url = input('Enter "index.m3u8" URL (or "exit" to quit): ')
-            if index_url.lower() == "exit":
-                break
-            await download(session, index_url, os.path.expanduser("~/Downloads/Playlist/hls"))
+    async with aiohttp.ClientSession() as session:
+        sem = asyncio.Semaphore(18)
+        args = parse_arguments()
+
+        if any(arg in ["", " ", None] for arg in args[:-1]):
+            raise ValueError(f'Some values are None: {args}')
+
+        print(f"video_url: {args[0]}, video_title: {args[1]}, video_ext: {args[2]}, download_dir: {args[3]}, make_subfolder: {args[4] is not None}, sub_foldername: {args[4]}")
+        await download_video(
+            sem = sem,
+            session = session,
+            video_url = args[0],
+            video_title = args[1],
+            video_ext = args[2],
+            download_dir = args[3],
+            make_subfolder = args[4] is not None,
+            subfoler_name = args[4]
+        )
 
 if __name__ == "__main__":
     asyncio.run(main())

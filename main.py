@@ -205,7 +205,7 @@ async def xnxx_handler():
                     pass
 
                 print(f'Downloading "{full_info['title']}"...')
-                download_url = list(full_info['media'].values())[0]['url']
+                download_url = list(full_info['media'].values())[-1]['url']
                 download_size, download_time = await download_video(sem, session, f"{full_info['title']} [xnxx]", download_url, '.mp4', download_dir)
                 print(f'Completed Download in {download_time}s [{download_size / (1024**2):.2f}MB]')
 
@@ -256,12 +256,93 @@ async def xnxx_handler():
                 if os.path.exists(temp):
                     os.remove(temp)
 
+async def xhamster_handler():
+    from xhamster import is_video_link, is_page_link, is_valid_link, make_session
+    from xhamster.extractors.page import extract_videos_from_webpage
+    from xhamster.extractors.video import extract_video_info
+    
+    async def download_videos(sem, session: ClientSession, videos: list, root_download_path: str):
+        os.makedirs(root_download_path, exist_ok=True)
+        download_dir = root_download_path
+        print(f'Downloading "{videos.__len__()}" videos in "{os.path.abspath(download_dir)}"')
+
+        new_videos = []
+        total_size = 0
+        total_time = 0
+        for idx, video in enumerate(videos, start=1):
+
+            clear()
+
+            print(f'{idx}. Extracting details for "{video['url'].split('/')[-1] or video['url'].split('/')[-2]}" \n[{len(videos) - idx} remaning, total: {len(videos)}]')
+            try:
+                full_info = await extract_video_info(sem, session, video['url'])
+                new_videos.append(full_info)
+
+                # Save the data for quick debugging
+                try:
+                    save_data(full_info, os.path.join(INITIAL_PATH, sanitize_filename(full_info["title"]) + ".json"))
+                except:
+                    pass
+
+                print(f'Downloading "{full_info['title']}"...')
+                download_url = list(full_info['media'].values())[0]['url']
+                download_size, download_time = await download_video(sem, session, f"{full_info['title']} [xhamster]", download_url, '.mp4', download_dir)
+                print(f'Completed Download in {download_time}s [{download_size / (1024**2):.2f}MB]')
+
+                total_size += download_size
+                total_time += download_time
+            except KeyboardInterrupt:
+                print('Quit Downloading?: ', end="")
+                if input('').lower().strip() in ['yes', 'y', '']:
+                    break
+            except Exception as e:
+                print(f'Unable to complete download: \n{"-"*10}\n{e or "Unknown Error"}\n{"-"*10}')
+                print('Press enter to move on...')
+                input("")
+            finally:
+                await asyncio.sleep(1)
+
+        return new_videos
+    
+    async with make_session() as session:
+        while True:
+            clear()
+            temp = os.path.join(INITIAL_PATH, f'{uuid4()}__initial.json')
+            try:
+                print("Enter link [\"list\" for multiple links]: ", end='')
+                ui = input('').strip()
+                
+                if ui.lower().strip() == "list":
+                    urls = [{'url': url} for url in read_until('Enter link', validator=is_video_link)]
+                elif ui.lower().strip() == "exit":
+                    return
+                elif is_video_link(ui):
+                    urls = [{'url': ui}]
+                elif is_page_link(ui):
+                    urls = await extract_videos_from_webpage(QUERY_SEM, session, ui.strip())
+                elif not is_valid_link(ui):
+                    raise ValueError(f'Invalid Url! [{ ui = }]')
+
+                try:
+                    new_data = await download_videos(QUERY_SEM, session, urls, os.path.join(DOWNLOAD_PATH, 'xhamster'))
+                    save_data(new_data, temp)
+                except Exception as e:
+                    print(f'Download Error: {e}')
+
+                if is_user_quit():
+                    return
+                
+            finally:
+                if os.path.exists(temp):
+                    os.remove(temp)
+
 async def main():
 
     available_domains = {
         'xnxx': xnxx_handler,
         'pornhub': pornhub_handler,
-        'okxxx': okxxx_handler
+        'okxxx': okxxx_handler,
+        'xhamster': xhamster_handler
     }
 
     while True:

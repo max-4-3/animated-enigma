@@ -41,6 +41,7 @@ def read_until(
     clear_screen: bool = True,
     exit_on_error: bool = True,
     validator: callable = lambda x: True,
+    allow_duplicates: bool = False
 ) -> list[str]:
     """Read user input until stop command is entered.
     
@@ -86,7 +87,12 @@ def read_until(
                 print(f"Invalid URL - must start with http:// or https://\nPress Enter to continue...")
                 input("")
                 continue
-                
+            
+            if not allow_duplicates and user_input in data:
+                print(f"Duplicates Not Wanted: \"{user_input}\" [already exists]")
+                input("")
+                continue
+            
             data.append(user_input)
         except:
             if exit_on_error:
