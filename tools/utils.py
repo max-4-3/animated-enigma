@@ -41,7 +41,8 @@ def read_until(
     clear_screen: bool = True,
     exit_on_error: bool = True,
     validator: callable = lambda x: True,
-    allow_duplicates: bool = False
+    allow_duplicates: bool = False,
+    reverse: bool = True
 ) -> list[str]:
     """Read user input until stop command is entered.
     
@@ -72,7 +73,7 @@ def read_until(
             # Check for stop command
             test_input = user_input if case_sensitive else user_input.lower()
             if test_input == stop_test:
-                return data
+                break
                 
             # Validate input
             if (not user_input):
@@ -96,8 +97,9 @@ def read_until(
             data.append(user_input)
         except:
             if exit_on_error:
-                return data
+                break
             continue
+    return data[::-1]
 
 def sanitize_filename(filename):
     """

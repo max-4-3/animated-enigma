@@ -4,7 +4,7 @@ from uuid import uuid4
 from aiohttp import ClientSession
 
 from tools.utils import clear, read_until, save_data, is_user_quit, sanitize_filename
-from tools.downloader import download_video
+from tools.downloader import download_video, download_video_with_ffmpeg
 from config import *
 
 async def okxxx_handler():
@@ -156,7 +156,7 @@ async def pornhub_handler():
                     urls = [{'url': url} for url in read_until('Enter link', validator=is_video_link)]
                 elif ui.lower().strip() == "exit":
                     return
-                elif is_video_link:
+                elif is_video_link(ui):
                     urls = [{'url': ui}]
                 elif is_page_link(ui):
                     urls = await extract_videos_from_webpage(QUERY_SEM, session, ui.strip())
@@ -273,9 +273,9 @@ async def xhamster_handler():
 
             clear()
 
-            print(f'{idx}. Extracting details for "{video['url'].split('/')[-1] or video['url'].split('/')[-2]}" \n[{len(videos) - idx} remaning, total: {len(videos)}]')
+            print(f'{idx}. Extracting details for "{video['pageUrl'].split('/')[-1] or video['url'].split('/')[-2]}" \n[{len(videos) - idx} remaning, total: {len(videos)}]')
             try:
-                full_info = await extract_video_info(sem, session, video['url'])
+                full_info = await extract_video_info(sem, session, video['pageUrl'])
                 new_videos.append(full_info)
 
                 # Save the data for quick debugging
@@ -285,8 +285,11 @@ async def xhamster_handler():
                     pass
 
                 print(f'Downloading "{full_info['title']}"...')
-                download_url = list(full_info['media'].values())[0]['url']
-                download_size, download_time = await download_video(sem, session, f"{full_info['title']} [xhamster]", download_url, '.mp4', download_dir)
+                download_url = (full_info.get('sources', {}).get("hls", {}).get("av1", None) or full_info.get('sources', {}).get("hls", {}).get("h264", None) or {}).get("url", None)
+                if not download_url:
+                    print('Unable to find download url!')
+                    continue
+                download_size, download_time = await download_video_with_ffmpeg(sem, f"{full_info['title']} [xhamster]", download_url, ".mp4", download_dir)
                 print(f'Completed Download in {download_time}s [{download_size / (1024**2):.2f}MB]')
 
                 total_size += download_size
@@ -313,11 +316,11 @@ async def xhamster_handler():
                 ui = input('').strip()
                 
                 if ui.lower().strip() == "list":
-                    urls = [{'url': url} for url in read_until('Enter link', validator=is_video_link)]
+                    urls = [{'pageUrl': url} for url in read_until('Enter link', validator=is_video_link)]
                 elif ui.lower().strip() == "exit":
                     return
                 elif is_video_link(ui):
-                    urls = [{'url': ui}]
+                    urls = [{'pageUrl': ui}]
                 elif is_page_link(ui):
                     urls = await extract_videos_from_webpage(QUERY_SEM, session, ui.strip())
                 elif not is_valid_link(ui):
@@ -362,6 +365,7 @@ async def main():
                 raise NotImplementedError(f'Downloader for \"{userinput}\" is not implemented!')
 
             await handler()
+            input("Press enter to continue...")
         except:
             print(f'Invalid Choice: {userinput}')
 

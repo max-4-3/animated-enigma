@@ -1,11 +1,22 @@
 from bs4 import BeautifulSoup, NavigableString
 import re
+from http.cookies import SimpleCookie
 from .converters import convert_duration_to_seconds, convert_upload_date_to_timestamp
 
 async def extract_video_info(sem, session, video_url: str, recommendation: bool = True, **kwargs):
     """Extract video info from a webpage and returns a dict with info"""
     async with sem:
         webpage = await session.get(video_url, **kwargs)
+        set_cookie_header = webpage.headers.getall('Set-Cookie', [])
+        for cookie_str in set_cookie_header:
+            cookie = SimpleCookie()
+            cookie.load(cookie_str)
+            # Convert to a dict that aiohttp can understand
+            cookies_dict = {key: morsel.value for key, morsel in cookie.items()}
+            session.cookie_jar.update_cookies(cookies_dict, webpage.url)
+        
+        if webpage.cookies:
+            session.cookie_jar.update_cookies(webpage.cookies)
 
         try:
             webpage.raise_for_status()

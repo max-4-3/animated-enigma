@@ -1,5 +1,6 @@
 import aiohttp, json, re
 from .converters import convert_views
+from http.cookies import SimpleCookie
 
 def get_resolutions(flash_var: dict) -> dict:
     res = {}
@@ -15,6 +16,16 @@ def get_resolutions(flash_var: dict) -> dict:
 async def extract_video(sem, session: aiohttp.ClientSession, video_link: str, include_var: bool = False, **kwargs):
     async with sem:
         async with session.get(video_link, **kwargs) as r:
+            set_cookie_header = r.headers.getall('Set-Cookie', [])
+            for cookie_str in set_cookie_header:
+                cookie = SimpleCookie()
+                cookie.load(cookie_str)
+                # Convert to a dict that aiohttp can understand
+                cookies_dict = {key: morsel.value for key, morsel in cookie.items()}
+                session.cookie_jar.update_cookies(cookies_dict, r.url)
+            
+            if r.cookies:
+                session.cookie_jar.update_cookies(r.cookies)
             try:
                 r.raise_for_status()
                 page = await r.text()

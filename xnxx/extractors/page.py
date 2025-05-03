@@ -1,5 +1,6 @@
 from bs4 import BeautifulSoup, Tag
 from rich import print
+from http.cookies import SimpleCookie
 import asyncio, aiohttp
 
 def get_text(elem):
@@ -43,6 +44,16 @@ async def get_videos_from_webpage(sem, session: aiohttp.ClientSession, page_url:
         try:
             async with session.get(page_url, **kwargs) as response:
                 response.raise_for_status()
+                set_cookie_header = response.headers.getall('Set-Cookie', [])
+                for cookie_str in set_cookie_header:
+                    cookie = SimpleCookie()
+                    cookie.load(cookie_str)
+                    # Convert to a dict that aiohttp can understand
+                    cookies_dict = {key: morsel.value for key, morsel in cookie.items()}
+                    session.cookie_jar.update_cookies(cookies_dict, response.url)
+                
+                if response.cookies:
+                    session.cookie_jar.update_cookies(response.cookies)
                 html = await response.text()
 
                 soup = BeautifulSoup(html, 'html.parser')

@@ -1,10 +1,21 @@
 from bs4 import BeautifulSoup
 from .converters import convert_views
 import aiohttp
+from http.cookies import SimpleCookie
 
 async def extract_videos_from_webpage(sem, session: aiohttp.ClientSession, page_link: str, **kwargs):
     async with sem:
         async with session.get(page_link, **kwargs) as r:
+            set_cookie_header = r.headers.getall('Set-Cookie', [])
+            for cookie_str in set_cookie_header:
+                cookie = SimpleCookie()
+                cookie.load(cookie_str)
+                # Convert to a dict that aiohttp can understand
+                cookies_dict = {key: morsel.value for key, morsel in cookie.items()}
+                session.cookie_jar.update_cookies(cookies_dict, r.url)
+            
+            if r.cookies:
+                session.cookie_jar.update_cookies(r.cookies)
             try:
                 r.raise_for_status()
                 page = await r.text()

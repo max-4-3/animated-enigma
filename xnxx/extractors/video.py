@@ -2,6 +2,7 @@ import aiohttp
 from bs4 import BeautifulSoup
 import re, json
 from urllib.parse import urljoin
+from http.cookies import SimpleCookie
 
 
 async def get_resolutions(session, master_m3u8: str, **kw) -> dict[int, dict[str, str]]:
@@ -54,6 +55,16 @@ async def extract_video_info(sem, session: aiohttp.ClientSession, video_url: str
         try:
             async with session.get(video_url, **kwargs) as r:
                 r.raise_for_status()
+                set_cookie_header = r.headers.getall('Set-Cookie', [])
+                for cookie_str in set_cookie_header:
+                    cookie = SimpleCookie()
+                    cookie.load(cookie_str)
+                    # Convert to a dict that aiohttp can understand
+                    cookies_dict = {key: morsel.value for key, morsel in cookie.items()}
+                    session.cookie_jar.update_cookies(cookies_dict, r.url)
+                
+                if r.cookies:
+                    session.cookie_jar.update_cookies(r.cookies)
                 text = await r.text()
         except Exception as e:
             print(f"[Fetch Error] {e}")

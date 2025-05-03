@@ -1,10 +1,21 @@
 import asyncio, aiohttp, re, json
+from http.cookies import SimpleCookie
 from rich import print
 
 async def extract_video_info(sem: asyncio.Semaphore, session: aiohttp.ClientSession, url: str, recommendations: bool = True, **kwargs) -> dict:
     async with sem:
         async with session.get(url, **kwargs) as response:
             response.raise_for_status()
+            set_cookie_header = response.headers.getall('Set-Cookie', [])
+            for cookie_str in set_cookie_header:
+                cookie = SimpleCookie()
+                cookie.load(cookie_str)
+                # Convert to a dict that aiohttp can understand
+                cookies_dict = {key: morsel.value for key, morsel in cookie.items()}
+                session.cookie_jar.update_cookies(cookies_dict, response.url)
+            
+            if response.cookies:
+                session.cookie_jar.update_cookies(response.cookies)
             try:
                 webpage = await response.text()
                 initial_data_pattern = re.compile(r'window\.initials\s*=\s*(\{.*?\});', re.DOTALL)

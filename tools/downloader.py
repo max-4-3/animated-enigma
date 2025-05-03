@@ -104,6 +104,69 @@ async def download_segment(sem, session: aiohttp.ClientSession, segment_url: str
             DownloadLog.error(f'[Download Segement Error] { e = }; { segment_name = }; { download_path = }; { segment_url = }')
             return ''
 
+async def download_video_with_ffmpeg(sem: asyncio.Semaphore, video_title: str, hls_url: str, video_ext: str, download_dir: str, re_encode: bool = False, make_subfolders: bool = True):
+    async with sem:
+        start = time.perf_counter()
+        video_title = sanitize_filename(video_title)
+        download_dir = os.path.join(download_dir, 'videos') if make_subfolders else download_dir
+        os.makedirs(download_dir, exist_ok=True)
+
+        output_file = os.path.join(download_dir, f"{video_title}{video_ext}")
+        Log.debug(f'[ffmpeg File Setup] { output_file = }')
+        
+        command = [
+            "ffmpeg", "-i", hls_url,
+            *(["-c", "copy"] if not re_encode else ["-c:v", "libx264", "-c:a", "aac"]),
+            "-fflags", "+genpts",
+            "-y", "-hide_banner", "-loglevel", "debug",
+            output_file
+        ]
+        
+        pattern = re.compile(r"^frame=.*time=(\d+):(\d+):(\d+)\.(\d+)")
+        duration_pattern = re.compile(r'Duration:\s(\d+):(\d+):(\d+)\.(\d+)')
+        
+        start = time.perf_counter()
+        process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        
+        Log.debug(f'[ffmpeg] proccess initilized { command = }; { pattern = }; { duration_pattern = }; { start = }')
+        with tqdm(desc='Downloaded (seconds)', unit='sec', unit_divisor=60, unit_scale=True) as pbar:
+            while True:
+                line = (await process.stderr.readline()).decode(errors='ignore')
+                if not line:
+                    break
+                
+                if (duration_match := duration_pattern.search(line)):
+                    DownloadLog.debug(f'[{line = }] Line matched { duration_pattern = }')
+                    h, m, s, ms = map(int, duration_match.groups())
+                    total = h * 3600 + m * 60 + s + ms / 100
+                    DownloadLog.info(f'Total duration found: {total =}')
+                    pbar.total = total
+
+                if (line_match := pattern.match(line)):
+                    DownloadLog.debug(f'[{line =}] Line matched { pattern = }')
+                    h, m, s, ms = map(int, line_match.groups())
+                    elapsed = h * 3600 + m * 60 + s + ms / 100
+                    DownloadLog.info(f'Elapsed: { elapsed = }')
+                    pbar.n = min(elapsed, pbar.total or elapsed)
+                    pbar.refresh()
+
+            if pbar.n < (pbar.total or 0):
+                DownloadLog.debug(f'Progress bar "n" is less...')
+                pbar.update(pbar.total - pbar.n)
+        await process.wait()        
+        
+        if process.returncode != 0:
+            stderr_remaining = await process.stderr.read()
+            err_msg = stderr_remaining.decode(errors='ignore')
+            Log.error(f'[FFmpeg Error] Download failed for {video_title}:\n{err_msg[-500:]}')
+            raise RuntimeError(f"FFmpeg failed for {video_title}")
+
+        end = time.perf_counter()
+        file_size = os.path.getsize(output_file) if os.path.exists(output_file) else 0
+        Log.info(f'[FFmpeg Complete] {video_title} | Size: {file_size} bytes | Time: {round(end - start, 2)}s')
+
+        return file_size, round(end - start, 2)
+
 async def download_video(sem: asyncio.Semaphore, session: aiohttp.ClientSession, video_title: str, video_url: str, video_ext: str, download_dir: str, cleanup: bool = True, re_encode: bool = False, download_sem_limit: int = 4, make_subfolder: bool = True, subfoler_name: str = "videos"):
     async with sem:
         video_title = sanitize_filename(video_title)
