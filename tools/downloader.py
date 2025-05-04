@@ -1,5 +1,4 @@
 import aiohttp, asyncio, argparse, os, sys, aiofiles, time, shutil, logging, re, random
-from colorama import Fore
 from rich import print
 from uuid import uuid4
 from tqdm import tqdm
@@ -102,7 +101,7 @@ async def download_segment(sem, session: aiohttp.ClientSession, segment_url: str
                 raise aiohttp.ServerConnectionError(f'Unable to Retrive Data from {segment_url}!')
 
         except Exception as e:
-            print(f'Unable to download segement "{Fore.RED}{segment_name}{Fore.RESET}"!')
+            print(f'Unable to download segement "{segment_name}"!')
             DownloadLog.error(f'[Download Segement Error] { e = }; { segment_name = }; { download_path = }; { segment_url = }')
             return ''
 

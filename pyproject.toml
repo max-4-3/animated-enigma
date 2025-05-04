@@ -1,0 +1,14 @@
+[project]
+name = "animated-enigma"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "aiofiles>=24.1.0",
+    "aiohttp>=3.11.18",
+    "bs4>=0.0.2",
+    "fake-useragent>=2.2.0",
+    "rich>=14.0.0",
+    "tqdm>=4.67.1",
+]
