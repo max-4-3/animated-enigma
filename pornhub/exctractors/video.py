@@ -15,7 +15,7 @@ def get_resolutions(flash_var: dict) -> dict:
 
 async def extract_video(sem, session: aiohttp.ClientSession, video_link: str, include_var: bool = False, **kwargs):
     async with sem:
-        async with session.get(video_link, **kwargs) as r:
+        async with session.get(re.sub(r'https?://[^/]+', '', video_link), **kwargs) as r:
             set_cookie_header = r.headers.getall('Set-Cookie', [])
             for cookie_str in set_cookie_header:
                 cookie = SimpleCookie()
@@ -53,7 +53,7 @@ async def extract_video(sem, session: aiohttp.ClientSession, video_link: str, in
                     'thumbnail': flash_var.get('image_url'),
                     'duration': flash_var['video_duration'],
                     'next_vid': flash_var.get('nextVideo'),
-                    'resolution': get_resolutions(flash_var),
+                    'media': get_resolutions(flash_var),
                     'flash_var': flash_var if include_var else {},
                     'timestamp': flash_var.get('playbackTracking').get('video_timestamp'),
                     'views': views

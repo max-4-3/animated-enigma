@@ -1,15 +1,17 @@
 import aiohttp, asyncio, argparse, os, sys, aiofiles, time, shutil, logging, re, random
 from colorama import Fore
+from rich import print
 from uuid import uuid4
 from tqdm import tqdm
 from datetime import datetime
+from urllib.parse import urljoin
 from typing import Any
 
 try:
     from .consts import LOG_FORMAT, LOG_PATH, DATE_FORMAT
     from .utils import sanitize_filename
 except:
-    def sanitize_filename(a): return a
+    def sanitize_filename(name): return re.sub(r'[^ \w]', '_', name)
     LOG_PATH = os.path.join(os.getcwd(), "logs")
     LOG_FORMAT = "[%(asctime)s] [%(levelname)s] [PID:%(process)d] [%(threadName)s] [%(funcName)s@%(filename)s:%(lineno)d] - %(message)s"
     DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -78,7 +80,7 @@ async def download_segment(sem, session: aiohttp.ClientSession, segment_url: str
                         DownloadLog.info(f'GET: { segment_url = } [{ r.status = }]')
 
                         DownloadLog.debug(f'{ download_path = }; { segment_name = }')
-                        with tqdm(total=int(r.headers.get('content-length', 0)), unit='B', unit_scale=True, desc=f'\t|-> Downloading "{segment_name}"'.expandtabs(4), leave=False, position=1) as segment_pbar:
+                        with tqdm(dynamic_ncols=True, total=int(r.headers.get('content-length', 0)), unit='B', unit_scale=True, desc=f'\t|-> Downloading "{segment_name}"'.expandtabs(4), leave=False, position=1) as segment_pbar:
                             async with aiofiles.open(download_path, 'wb') as file:
                                 while chunk := await r.content.read(1024 * 1024 * 40):
                                     await file.write(chunk)
@@ -104,6 +106,92 @@ async def download_segment(sem, session: aiohttp.ClientSession, segment_url: str
             DownloadLog.error(f'[Download Segement Error] { e = }; { segment_name = }; { download_path = }; { segment_url = }')
             return ''
 
+async def add_thumbnail(
+    sem: asyncio.Semaphore,
+    session: aiohttp.ClientSession,
+    thumbnail_url: str,
+    video_file: str
+):
+    """
+    Adds a thumbnail to a video file using ffmpeg.
+
+    Args:
+        sem: Semaphore to limit concurrent operations.
+        session: aiohttp ClientSession for making HTTP requests.
+        thumbnail_url: URL of the thumbnail image.
+        video_file: Path to the video file.
+
+    Returns:
+        True if the thumbnail was added successfully, False otherwise.
+    """
+    try:
+        async with sem:
+            path, name = os.path.split(video_file)
+            timestamp = int(time.time())
+            thumb_name = f"{timestamp}_thumb_{os.path.basename(video_file)}.png"
+            thumb_path = os.path.join(path, thumb_name)
+            temp_file_name = os.path.join(path, f"{timestamp}_{name}")  # Corrected temp file name
+
+            # Download the thumbnail
+            print(f"[blue]Downloading thumbnail from:[/blue] {thumbnail_url}")
+            async with session.get(thumbnail_url) as response:
+                response.raise_for_status()
+                async with aiofiles.open(thumb_path, 'wb') as f:
+                    while chunk := await response.content.read(1024 * 1024):  # 1MB chunks
+                        await f.write(chunk)
+            print(f"[green]Thumbnail downloaded to:[/green] {thumb_path}")
+
+            # Attach thumbnail using ffmpeg
+            print(f"[blue]Adding thumbnail to video:[/blue] {video_file}")
+            cmd = [
+                'ffmpeg',
+                '-i', video_file,
+                '-i', thumb_path,
+                '-map', '1',  # Input stream 1 (the thumbnail)
+                '-map', '0',  # Input stream 0 (the video)
+                '-c', 'copy',  # Copy both video and audio streams
+                '-disposition:0', 'attached_pic',  # Set the thumbnail disposition
+                '-y',  # Override output file without asking
+                temp_file_name,
+            ]
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.DEVNULL,  # Suppress standard output
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await proc.communicate()
+
+            if proc.returncode != 0:
+                print(f"[red]ffmpeg failed with code {proc.returncode}:[/red] {stderr.decode()}")
+                return False
+
+            # Replace the original video file with the modified one
+            try:
+                os.remove(video_file)  # Remove the original video file
+                os.rename(temp_file_name, video_file)  # Rename the temp file
+                print(f"[green]Thumbnail added successfully to:[/green] {video_file}")
+                return True
+            except OSError as e:
+                print(f"[red]Failed to replace original video file:[/red] {e}")
+                return False
+
+    except aiohttp.ClientError as e:
+        print(f"[red]Error downloading thumbnail:[/red] {e}")
+        return False
+    except Exception as e:
+        print(f"[red]Thumbnail processing failed:[/red] {e}")
+        return False
+    finally:
+        # Clean up temporary files
+        for temp_file in [thumb_path, temp_file_name]:
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                    print(f"[yellow]Deleted temporary file:[/yellow] {temp_file}")
+                except OSError as e:
+                    print(f"[red]Failed to delete temporary file:[/red] {e}")
+                    # Log the error, but don't raise an exception here.  Cleanup should be robust.
+
 async def download_video_with_ffmpeg(sem: asyncio.Semaphore, video_title: str, hls_url: str, video_ext: str, download_dir: str, re_encode: bool = False, make_subfolders: bool = True):
     async with sem:
         start = time.perf_counter()
@@ -117,7 +205,7 @@ async def download_video_with_ffmpeg(sem: asyncio.Semaphore, video_title: str, h
         command = [
             "ffmpeg", "-i", hls_url,
             *(["-c", "copy"] if not re_encode else ["-c:v", "libx264", "-c:a", "aac"]),
-            "-fflags", "+genpts",
+            "-fflags", "+genpts", "-threads", "10",
             "-y", "-hide_banner", "-loglevel", "debug",
             output_file
         ]
@@ -129,7 +217,7 @@ async def download_video_with_ffmpeg(sem: asyncio.Semaphore, video_title: str, h
         process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         
         Log.debug(f'[ffmpeg] proccess initilized { command = }; { pattern = }; { duration_pattern = }; { start = }')
-        with tqdm(desc='Downloaded (seconds)', unit='sec', unit_divisor=60, unit_scale=True) as pbar:
+        with tqdm(desc='Downloaded (seconds)', unit='sec', unit_divisor=60, unit_scale=True, dynamic_ncols=True) as pbar:
             while True:
                 line = (await process.stderr.readline()).decode(errors='ignore')
                 if not line:
@@ -165,7 +253,7 @@ async def download_video_with_ffmpeg(sem: asyncio.Semaphore, video_title: str, h
         file_size = os.path.getsize(output_file) if os.path.exists(output_file) else 0
         Log.info(f'[FFmpeg Complete] {video_title} | Size: {file_size} bytes | Time: {round(end - start, 2)}s')
 
-        return file_size, round(end - start, 2)
+        return file_size, round(end - start, 2), output_file
 
 async def download_video(sem: asyncio.Semaphore, session: aiohttp.ClientSession, video_title: str, video_url: str, video_ext: str, download_dir: str, cleanup: bool = True, re_encode: bool = False, download_sem_limit: int = 4, make_subfolder: bool = True, subfoler_name: str = "videos"):
     async with sem:
@@ -199,29 +287,37 @@ async def download_video(sem: asyncio.Semaphore, session: aiohttp.ClientSession,
                         data += ('\n' if line[0] != '\n' else '') + line
 
                 # Remove trailing slash if present
-                base_url = video_url.rsplit('/', 1)[0].rstrip('/')
+                base_url = video_url.rsplit('/', 1)[0] + '/'  # Ensures trailing slash
                 m3u8_urls = []
 
                 for i, line in enumerate(raw.splitlines(), start=1):
+                    line = line.strip()
+
                     if not line or line.startswith('#'):
-                        GatherLog.debug(f'Skipping line {i}: Empty or comment [{ line = }]')
+                        GatherLog.debug(f'Skipping line {i}: Empty or comment [{line}]')
+                        
+                        # Handle init segment (EXT-X-MAP)
+                        if line.startswith('#EXT-X-MAP:'):
+                            match = re.search(r'URI="(.+?)"', line)
+                            if match:
+                                init_path = match.group(1)
+                                full_url = urljoin(base_url, init_path)
+                                segment_name = init_path.split('/')[-1]
+                                GatherLog.debug(f'Adding init segment {segment_name} from {full_url}')
+                                m3u8_urls.append((segment_name, full_url))
                         continue
-                    
-                    # Handle segment link construction
-                    if line.startswith(('http://', 'https://')):
-                        segment_full_link = line
-                    else:
-                        segment_full_link = f"{base_url}/{line.lstrip('/')}"
-                    
-                    segment_name = segment_full_link.split('/')[-1].split('?')[0] or segment_full_link.split("/")[-1]
-                    
-                    GatherLog.debug(f'Adding segment {i}: {segment_name} from {segment_full_link}')
-                    m3u8_urls.append((segment_name, segment_full_link))
+
+                    # This is a media segment (e.g., .ts)
+                    segment_url = urljoin(base_url, line)
+                    segment_name = line.split('?')[0].split('/')[-1]
+
+                    GatherLog.debug(f'Adding segment {i}: {segment_name} from {segment_url}')
+                    m3u8_urls.append((segment_name, segment_url))
 
                 GatherLog.info(f'{len(m3u8_urls)} segments url found for video: {video_title}')
 
             # Download all segments
-            with tqdm(total=len(m3u8_urls), position=0, desc='Segment progress', unit='seg', colour='green') as pbar:
+            with tqdm(total=len(m3u8_urls), position=0, desc='Segment progress', unit='seg', colour='green', dynamic_ncols=True) as pbar:
                 tasks = []
                 filenames = []
                 for name, link in m3u8_urls:
@@ -304,7 +400,7 @@ async def download_video(sem: asyncio.Semaphore, session: aiohttp.ClientSession,
         duration = round(end - start, 2)
         file_size = os.path.getsize(output_file) if os.path.exists(output_file) else 0
         Log.info(f'Completed processing video: {video_title} | Size: {file_size} bytes | Took: {duration} seconds')
-        return file_size, duration
+        return file_size, duration, output_file
 
 def parse_arguments() -> list[str | Any | None]:
     if len(sys.argv) == 1:  # No Arguments Given

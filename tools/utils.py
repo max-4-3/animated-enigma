@@ -99,7 +99,51 @@ def read_until(
             if exit_on_error:
                 break
             continue
-    return data[::-1]
+    return data[::-1] if reverse else data
+
+def format_elapsed_time(seconds: float) -> str:
+    millis = int((seconds % 1) * 1000)
+    total_seconds = int(seconds)
+
+    days, total_seconds = divmod(total_seconds, 86400)
+    hours, total_seconds = divmod(total_seconds, 3600)
+    minutes, total_seconds = divmod(total_seconds, 60)
+    secs = total_seconds
+
+    parts = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes:
+        parts.append(f"{minutes}m")
+    if secs:
+        parts.append(f"{secs}s")
+    if millis or not parts:
+        parts.append(f"{millis}ms")
+
+    return ' '.join(parts)
+
+def format_bytes_readable(size: int) -> str:
+    units = {
+        0: "B",
+        1: "KB",
+        2: "MB",
+        3: "GB",
+        4: "TB",
+        5: "PB"
+    }
+
+    if size < 1024:
+        return f"{size} B"
+
+    power = 0
+    while size >= 1024 and power < len(units) - 1:
+        size /= 1024
+        power += 1
+
+    return f"{size:.2f} {units[power]}"
+
 
 def sanitize_filename(filename):
     """

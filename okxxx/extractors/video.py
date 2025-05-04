@@ -23,7 +23,9 @@ async def extract_video_info(sem, session, video_url: str, recommendation: bool 
             soup = BeautifulSoup(await webpage.text(), 'html.parser')
 
             title = ' '.join(soup.find('title').text.split()[2:-2])
+            thumbnail = soup.select_one('meta[property*="og:image"]').attrs.get('content', None)
             video_info_div = soup.find('div', class_='video-info')
+
 
             # Extract Socials
             social_element = video_info_div.find('div', class_='social-holder')
@@ -169,6 +171,7 @@ async def extract_video_info(sem, session, video_url: str, recommendation: bool 
 
             video_meta = {
                 'title': title,
+                'thumbnail': thumbnail,
                 'meta': meta,
                 'tags': tags,
                 'links': video_links,
