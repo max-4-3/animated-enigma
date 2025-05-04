@@ -4,7 +4,8 @@ Currently it only _Supports_:
 
 - [XNXX](https://xnxx.health/)
 - [OkXxx](https://okxxx2.com/)
-- [Pornhub](https://www.pornhub.com)
+- [Pornhub](https://www.pornhub.com/)
+- [xHamster](https://xhamster.desi/)
 
 Video Data Struct ( Roufghly ):
 
