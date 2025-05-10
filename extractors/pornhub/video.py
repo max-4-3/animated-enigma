@@ -7,6 +7,12 @@ from .page import extract_all_thumb_videos
 from ..models import ExternalLink, Recommendations, VideoLinks, Media, MediaItem, Metadata, Video, Thumbnail
 from http.cookies import SimpleCookie
 
+def get_text_wrapper(exp, default = None):
+    try:
+        return exp()
+    except:
+        return default
+
 def get_resolutions(flash_var: dict) -> dict:
     res = {}
     for media in flash_var['mediaDefinitions']:
@@ -48,9 +54,9 @@ async def extract_video(sem, session: aiohttp.ClientSession, video_link: str, in
                 metadata = Metadata(
                     duration = flash_var.get('video_duration') or 0,
                     upload_date = datetime.fromtimestamp(flash_var.get('playbackTracking', {}).get('video_timestamp') or 0).strftime('%d/%m/%Y, %H:%M:%S'),
-                    views = convert_views(soup.select_one('div.views span.count').get_text(strip=True)),
+                    views = convert_views(get_text_wrapper(lambda: soup.select_one('div.views span.count').get_text(strip=True), default=0)),
                     extras = {
-                        "likes": soup.select_one('span.votesUp').get_text(strip=True)
+                        "likes": get_text_wrapper(lambda: soup.select_one('span.votesUp').get_text(strip=True), 0)
                     }
                 )
                 
@@ -60,12 +66,12 @@ async def extract_video(sem, session: aiohttp.ClientSession, video_link: str, in
                     if info_raw.select_one('div.userInfoBlock') or (not info_raw.select_one('p')) or (not info_raw.select('a')):
                         continue
 
-                    vidlinks = VideoLinks(title = info_raw.select_one('p').get_text(strip=True), links = [])
+                    vidlinks = VideoLinks(title = get_text_wrapper(lambda: info_raw.select_one('p').get_text(strip=True), "Unknowm Links Category"), links = [])
                     for a in info_raw.select('a'):
                         try:
                             vidlinks.links.append(
                                 ExternalLink(
-                                    name = a.get_text(strip=True),
+                                    name = get_text_wrapper(lambda: a.get_text(strip=True), "Unknown Name"),
                                     url = 'https://' + DOMAIN + a.attrs.get('href')
                                 )
                             )
@@ -77,14 +83,14 @@ async def extract_video(sem, session: aiohttp.ClientSession, video_link: str, in
                 userinfo = soup.select_one('div.userInfoBlock')
                 user = {
                     "avatar": userinfo.select_one('div.userAvatar img').attrs.get('src'),
-                    "name": userinfo.select_one('div.userInfo span.usernameBadgesWrapper a').get_text(strip=True),
+                    "name": get_text_wrapper(lambda: userinfo.select_one('div.userInfo span.usernameBadgesWrapper a').get_text(strip=True), "Unknown User"),
                     "url": 'https://' + DOMAIN + userinfo.select_one('div.userInfo span.usernameBadgesWrapper a').attrs.get('href', '/'),
                     "titles": [
                         i.attrs.get('data-title')
                         for i in userinfo.select('div.userInfo span.usernameBadgesWrapper i')
                     ],
-                    "total_videos": userinfo.select('div.userInfo span:not(.line):not(.usernameBadgesWrapper)')[0].get_text(strip=True),
-                    "total_subs": userinfo.select('div.userInfo span:not(.line):not(.usernameBadgesWrapper)')[1].get_text(strip=True),
+                    "total_videos": get_text_wrapper(lambda: userinfo.select('div.userInfo span:not(.line):not(.usernameBadgesWrapper)')[0].get_text(strip=True), 'N/A'),
+                    "total_subs": get_text_wrapper(lambda: userinfo.select('div.userInfo span:not(.line):not(.usernameBadgesWrapper)')[1].get_text(strip=True), 'N/A'),
                 }
 
                 # Recommendations
@@ -117,7 +123,7 @@ async def extract_video(sem, session: aiohttp.ClientSession, video_link: str, in
                     )
 
                 return Video(
-                    title = flash_var.get('video_title') or soup.select_one('title').get_text(strip=True),
+                    title = flash_var.get('video_title') or get_text_wrapper(lambda: soup.select_one('title').get_text(strip=True), 'Unnamed Video!'),
                     url = video_link,
                     metadata=metadata,
                     thumbnail=Thumbnail(url=soup.select_one('meta[property="og:image"]').attrs.get('content')),

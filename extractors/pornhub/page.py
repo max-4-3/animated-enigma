@@ -5,6 +5,7 @@ from ..converters import convert_views, convert_duration
 import aiohttp
 from ..models import Thumbnail, ThumbVideo, Metadata, VideoLinks, ExternalLink
 from http.cookies import SimpleCookie
+from .video import get_text_wrapper
 
 async def extract_all_thumb_videos(webpage: BeautifulSoup | Tag) -> list[ThumbVideo | None]:
     results = []
@@ -15,11 +16,11 @@ async def extract_all_thumb_videos(webpage: BeautifulSoup | Tag) -> list[ThumbVi
         # Extract Metadata
         try:
             metadata = Metadata(
-                views = convert_views(li.select_one('span.views var').get_text(strip=True)),
-                duration = convert_duration(li.select_one('var.duration').get_text(strip=True)),
-                upload_date=li.select_one('var.added').get_text(strip=True),
+                views = convert_views(get_text_wrapper(lambda: li.select_one('span.views var').get_text(strip=True), 0)),
+                duration = convert_duration(get_text_wrapper(lambda: li.select_one('var.duration').get_text(strip=True), 0)),
+                upload_date=get_text_wrapper(lambda: li.select_one('var.added').get_text(strip=True), 'A Long Time Ago...'),
                 extras={
-                    "rating": li.select_one('div.value').get_text(strip=True)
+                    "rating": get_text_wrapper(lambda: li.select_one('div.value').get_text(strip=True), 0)
                 }
             )
         except Exception as e:
@@ -31,7 +32,7 @@ async def extract_all_thumb_videos(webpage: BeautifulSoup | Tag) -> list[ThumbVi
             videolink = VideoLinks(title="Uploader(s)", links=[])
             for a in li.select('div.usernameWrap a'):
                 try:
-                    videolink.links.append(ExternalLink(name=a.get_text(strip=True), url='https://' + DOMAIN + (a.attrs.get('href') or '/')))
+                    videolink.links.append(ExternalLink(name=get_text_wrapper(lambda: a.get_text(strip=True), 'Unknown Name'), url='https://' + DOMAIN + (a.attrs.get('href') or '/')))
                 except:
                     pass
             links.append(videolink)
@@ -42,7 +43,7 @@ async def extract_all_thumb_videos(webpage: BeautifulSoup | Tag) -> list[ThumbVi
         try:
             video = ThumbVideo(
                 id = li.attrs.get('data-video-vkey') or li.attrs.get('id') or uuid4().hex,
-                title = li.select_one('span.title a').get_text(strip=True),
+                title = get_text_wrapper(lambda: li.select_one('span.title a').get_text(strip=True), 'No Title'),
                 url = "https://" + DOMAIN + li.select_one('span.title a').attrs.get('href', '/'),
                 thumbnail = Thumbnail(url=li.select_one('img').attrs.get('src')),
                 metadata = metadata,

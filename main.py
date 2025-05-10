@@ -212,7 +212,7 @@ async def okxxx_handler():
                     is_page_link,
                     is_video_link,
                     prefix="[OKXXX]",
-                    sem = sem,
+                    sem = QUERY_SEM,
                     session = session
                 )
 
@@ -260,7 +260,7 @@ async def pornhub_handler():
                     is_page_link,
                     is_video_link,
                     prefix="[PORNHUB]",
-                    sem = sem,
+                    sem = QUERY_SEM,
                     session = session
                 )
 
@@ -292,7 +292,7 @@ async def xnxx_handler():
                     is_page_link,
                     is_video_link,
                     prefix="[XNXX]",
-                    sem = sem,
+                    sem = QUERY_SEM,
                     session = session
                 )
 
