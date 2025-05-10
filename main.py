@@ -3,12 +3,34 @@ from rich import print
 from uuid import uuid4
 from aiohttp import ClientSession
 from datetime import datetime
-from typing import Callable
+from typing import Callable, List
 
 from extractors.models import ThumbVideo, Video, Media, MediaItem
 from tools.utils import clear, read_until, format_bytes_readable, save_data, is_user_quit, sanitize_filename, format_elapsed_time
 from tools.downloader import download_video, download_video_with_ffmpeg, add_thumbnail
 from config import *
+
+async def user_input_proccesser(page_parser: Callable, page_link_validator: Callable, video_link_validator: Callable, print_first: str = None, prefix: str = "") -> List[ThumbVideo]:
+    print(print_first if print_first else f"{prefix} Enter link [\"list\" for multiple links]:", end="")
+    userinput = input("").lower().strip()
+
+    if not userinput:
+        raise ValueError('Enter a value!')
+    
+    if userinput in ['exit', 'stop']:
+        raise StopIteration
+    
+    if userinput == "list":
+        return [ThumbVideo(url = url) for url in read_until(f"{prefix} Enter Only Video Links:", validator=video_link_validator)]
+
+    elif video_link_validator(userinput):
+        return [ThumbVideo( url = userinput)]
+
+    elif page_link_validator(userinput):
+        return await page_parser(userinput)
+    
+    else:
+        raise Exception('Invalid Input Passed: {}'.format(userinput))
 
 def get_highest_media_dict(media_dict: Media) -> MediaItem | None:
     try:
@@ -23,7 +45,7 @@ def get_highest_media_dict(media_dict: Media) -> MediaItem | None:
 async def download_videos(
     sem,
     session,
-    videos: list[dict | ThumbVideo],
+    videos: list[ThumbVideo],
     extract_details_func: Callable,
     root_download_path: str,
     *,
@@ -31,11 +53,11 @@ async def download_videos(
     get_media_dict_func: Callable = None,
     pre_meida_url_func: Callable = None,
     max_retries: int = 3,
+    download_retries: int = 1,
     backoff_base: float = 2.0,
     download_session: ClientSession = None,
     skip_custom_downloader: bool = False,
-    thumbnail_url_extract_func: Callable = None,
-    **_,
+    thumbnail_url_extract_func: Callable = None
 ):
     os.makedirs(root_download_path, exist_ok=True)
     name_suffix = "[ " + re.sub(r'\s{2,}', ' ', re.search(r"[\w+\s]+", name_suffix or os.path.basename(root_download_path)).group(0)).strip() + " ]"
@@ -48,7 +70,7 @@ async def download_videos(
     for idx, video in enumerate(videos, 1):
         clear()
 
-        video_id = (video["url"] if not isinstance(video, ThumbVideo) else video.url).rstrip("/").split("/")[-1]
+        video_id = video.url.rstrip("/").split("/")[-1]
         print(f'[bold]{idx}/{len(videos)}[/bold] Extracting: [yellow]{video_id}[/yellow]')
 
         try:
@@ -56,7 +78,7 @@ async def download_videos(
             for attempt in range(1, max_retries + 1):
                 try:
                     print(f'[blue]🔍 Attempt {attempt}: Extracting video details...[/blue]')
-                    video_extracted: Video = await extract_details_func(sem, session, video["url"] if not isinstance(video, ThumbVideo) else video.url)
+                    video_extracted: Video = await extract_details_func(sem, session, video.url)
                     if not video_extracted:
                         raise ValueError("No details extracted")
                     break  # Success
@@ -105,7 +127,7 @@ async def download_videos(
                     download_url, '.mp4', root_download_path
                 )
             else:
-                for attempt in range(1, max_retries + 1):
+                for attempt in range(1, download_retries + 1):
                     try:
                         print(f'[blue]▶ Attempt {attempt}: Using custom downloader...[/blue]')
                         size_downloaded, time_taken, output_file = await download_video(
@@ -176,7 +198,7 @@ async def download_videos(
 
 async def okxxx_handler():
 
-    from extractors.okxxx import is_valid_link, is_page_link, is_video_link, make_session
+    from extractors.okxxx import is_page_link, is_video_link, make_session
     from extractors.okxxx.page import extract_videos_from_webpage
     from extractors.okxxx.video import extract_video_info
 
@@ -185,19 +207,12 @@ async def okxxx_handler():
             clear()
             temp = os.path.join(INITIAL_PATH, f'{uuid4()}__initial.json')
             try:
-                print("Enter link [\"list\" for multiple links]: ", end='')
-                ui = input('').strip()
-                
-                if ui.lower().strip() == "list":
-                    urls = [{'url': url} for url in read_until('Enter link', validator=is_video_link)]
-                elif ui.lower().strip() == "exit":
-                    return
-                elif is_video_link(ui):
-                    urls = [{'url': ui}]
-                elif is_page_link(ui):
-                    urls = await extract_videos_from_webpage(QUERY_SEM, session, ui.strip())
-                elif not is_valid_link(ui):
-                    raise ValueError(f'Invalid Url! [{ ui = }]')
+                urls = await user_input_proccesser(
+                    extract_videos_from_webpage,
+                    is_page_link,
+                    is_video_link,
+                    prefix="[OKXXX]"
+                )
 
                 try:
                     new_data = await download_videos(QUERY_SEM, session, urls, extract_details_func=extract_video_info, root_download_path=os.path.join(DOWNLOAD_PATH, 'okxxx'), thumbnail_url_extract_func=lambda info: info.thumbnail.url)
@@ -213,7 +228,7 @@ async def okxxx_handler():
                     os.remove(temp)
 
 async def pornhub_handler():
-    from extractors.pornhub import is_valid_link, is_page_link, is_video_link, make_session
+    from extractors.pornhub import is_page_link, is_video_link, make_session
     from extractors.pornhub.page import extract_videos_from_webpage
     from extractors.pornhub.video import extract_video
 
@@ -238,19 +253,12 @@ async def pornhub_handler():
             clear()
             temp = os.path.join(INITIAL_PATH, f'{uuid4()}__initial.json')
             try:
-                print("Enter link [\"list\" for multiple links]: ", end='')
-                ui = input('').strip()
-                
-                if ui.lower().strip() == "list":
-                    urls = [{'url': url} for url in read_until('Enter link', validator=is_video_link)]
-                elif ui.lower().strip() == "exit":
-                    return
-                elif is_video_link(ui):
-                    urls = [{'url': ui}]
-                elif is_page_link(ui):
-                    urls = await extract_videos_from_webpage(QUERY_SEM, session, ui.strip())
-                elif not is_valid_link(ui):
-                    raise ValueError(f'Invalid Url! [{ ui = }]')
+                urls = await user_input_proccesser(
+                    extract_videos_from_webpage,
+                    is_page_link,
+                    is_video_link,
+                    prefix="[PORNHUB]"
+                )
 
                 try:
                     new_data = await download_videos(QUERY_SEM, session, urls, extract_video, os.path.join(DOWNLOAD_PATH, 'pornhub'), pre_meida_url_func=get_index_url, download_session=download_session, thumbnail_url_extract_func=lambda info: info.thumbnail.url)
@@ -266,7 +274,7 @@ async def pornhub_handler():
                     os.remove(temp)
 
 async def xnxx_handler():
-    from extractors.xnxx import is_valid_link, is_page_link, is_video_link, make_session
+    from extractors.xnxx import is_page_link, is_video_link, make_session
     from extractors.xnxx.video import extract_video_info
     from extractors.xnxx.page import get_videos_from_webpage
     
@@ -275,19 +283,12 @@ async def xnxx_handler():
             clear()
             temp = os.path.join(INITIAL_PATH, f'{uuid4()}__initial.json')
             try:
-                print("Enter link [\"list\" for multiple links]: ", end='')
-                ui = input('').strip()
-                
-                if ui.lower().strip() == "list":
-                    urls = [{'url': url} for url in read_until('Enter link', validator=is_video_link)]
-                elif ui.lower().strip() == "exit":
-                    return
-                elif is_video_link(ui):
-                    urls = [{'url': ui}]
-                elif is_page_link(ui):
-                    urls = await get_videos_from_webpage(QUERY_SEM, session, ui.strip())
-                elif not is_valid_link(ui):
-                    raise ValueError(f'Invalid Url! [{ ui = }]')
+                urls = await user_input_proccesser(
+                    get_videos_from_webpage,
+                    is_page_link,
+                    is_video_link,
+                    prefix="[XNXX]"
+                )
 
                 try:
                     new_data = await download_videos(QUERY_SEM, session, urls, extract_video_info, os.path.join(DOWNLOAD_PATH, 'xnxx'), thumbnail_url_extract_func=lambda info: info.thumbnail.url)
@@ -353,7 +354,7 @@ async def main():
         'xnxx': xnxx_handler,
         'pornhub': pornhub_handler,
         'okxxx': okxxx_handler,
-        'xhamster': xhamster_handler
+        # 'xhamster': xhamster_handler  # Currently Not Fixed this one...
     }
 
     while True:

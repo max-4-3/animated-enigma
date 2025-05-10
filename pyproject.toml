@@ -10,6 +10,7 @@ dependencies = [
     "bs4>=0.0.2",
     "fake-useragent>=2.2.0",
     "pydantic>=2.11.4",
+    "pyperclip>=1.9.0",
     "rich>=14.0.0",
     "tqdm>=4.67.1",
 ]
