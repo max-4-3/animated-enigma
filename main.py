@@ -10,7 +10,7 @@ from tools.utils import clear, read_until, format_bytes_readable, save_data, is_
 from tools.downloader import download_video, download_video_with_ffmpeg, add_thumbnail
 from config import *
 
-async def user_input_proccesser(page_parser: Callable, page_link_validator: Callable, video_link_validator: Callable, print_first: str = None, prefix: str = "") -> List[ThumbVideo]:
+async def user_input_proccesser(page_parser: Callable, page_link_validator: Callable, video_link_validator: Callable, print_first: str = None, prefix: str = "", **args) -> List[ThumbVideo]:
     print(print_first if print_first else f"{prefix} Enter link [\"list\" for multiple links]:", end="")
     userinput = input("").lower().strip()
 
@@ -27,7 +27,7 @@ async def user_input_proccesser(page_parser: Callable, page_link_validator: Call
         return [ThumbVideo( url = userinput)]
 
     elif page_link_validator(userinput):
-        return await page_parser(userinput)
+        return await page_parser(userinput, **args)
     
     else:
         raise Exception('Invalid Input Passed: {}'.format(userinput))
@@ -211,7 +211,9 @@ async def okxxx_handler():
                     extract_videos_from_webpage,
                     is_page_link,
                     is_video_link,
-                    prefix="[OKXXX]"
+                    prefix="[OKXXX]",
+                    sem = sem,
+                    session = session
                 )
 
                 try:
@@ -257,7 +259,9 @@ async def pornhub_handler():
                     extract_videos_from_webpage,
                     is_page_link,
                     is_video_link,
-                    prefix="[PORNHUB]"
+                    prefix="[PORNHUB]",
+                    sem = sem,
+                    session = session
                 )
 
                 try:
@@ -287,7 +291,9 @@ async def xnxx_handler():
                     get_videos_from_webpage,
                     is_page_link,
                     is_video_link,
-                    prefix="[XNXX]"
+                    prefix="[XNXX]",
+                    sem = sem,
+                    session = session
                 )
 
                 try:
