@@ -1,5 +1,6 @@
 import os, json, asyncio, re
 from rich import print
+from pydantic import BaseModel
 
 
 def load_data(fp=os.path.join(os.path.split(os.path.split(__file__)[0])[0], 'config.json')):
@@ -25,8 +26,20 @@ def load_data(fp=os.path.join(os.path.split(os.path.split(__file__)[0])[0], 'con
 
 def save_data(d, fp):
     with open(fp, 'w', errors='ignore', encoding='utf-8') as file:
+        data = None
+        if isinstance(d, BaseModel):
+            data = d.model_dump(mode='json')
+        elif isinstance(d, list):
+            data = []
+            for obj in d:
+                if isinstance(obj, BaseModel):
+                    data.append(obj.model_dump(mode='json'))
+                else:
+                    data.append(obj)
+        else:
+            data = d
         try:
-            json.dump(d, file, indent=4, ensure_ascii=False)
+            json.dump(data, file, indent=4, ensure_ascii=False)
         except Exception as e:
             print(f'Unable to save data to file "{fp}": {e}')
 

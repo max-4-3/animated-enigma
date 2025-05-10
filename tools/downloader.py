@@ -189,7 +189,6 @@ async def add_thumbnail(
                     print(f"[yellow]Deleted temporary file:[/yellow] {temp_file}")
                 except OSError as e:
                     print(f"[red]Failed to delete temporary file:[/red] {e}")
-                    # Log the error, but don't raise an exception here.  Cleanup should be robust.
 
 async def download_video_with_ffmpeg(sem: asyncio.Semaphore, video_title: str, hls_url: str, video_ext: str, download_dir: str, re_encode: bool = False, make_subfolders: bool = True):
     async with sem:

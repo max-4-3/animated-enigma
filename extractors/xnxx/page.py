@@ -1,20 +1,23 @@
 from bs4 import BeautifulSoup, Tag
 from rich import print
 from http.cookies import SimpleCookie
+
+from ..converters import convert_duration, convert_views
+from ..models import ThumbVideo, Thumbnail, Metadata
+
 import asyncio, aiohttp
 
 def get_text(elem):
     try:
         return elem.text
     except:
-        return "FiledNotFound!"
+        return "Field Not Found!"
 
-async def parse_video_element(video_element: Tag) -> dict | None:
+async def parse_video_element(video_element: Tag) -> ThumbVideo | None:
     try:
-        id = int(video_element.attrs.get('data-id') or 0)
         title = get_text(video_element.select_one('div.thumb-under p a'))
         url = "https://xnxx.health" + video_element.select_one('div.thumb-under p a').attrs.get('href', '')
-        thumbnail = video_element.select_one('div.thumb img').attrs.get('data-src')
+        thumbnail = Thumbnail( url = video_element.select_one('div.thumb img').attrs.get('data-src'))
 
         right = video_element.select_one('span.right')
         views = get_text(right.contents[0]).strip()
@@ -26,20 +29,24 @@ async def parse_video_element(video_element: Tag) -> dict | None:
         except:
             is_hd = False
         
-        return {
-            'id': id,
-            "title": title,
-            "thumbnail": thumbnail,
-            "duration": duration,
-            "views": views,
-            "superfluous": superfluous,
-            "is_hd": is_hd,
-            "url": url
-        }
+        return ThumbVideo(
+            title=title,
+            thumbnail=thumbnail,
+            url = url,
+            metadata = Metadata(
+                views = convert_views(views),
+                duration = convert_duration(duration),
+                extras = {
+                    "is_hd": is_hd,
+                    "superfluous": superfluous
+                }
+            ),
+            links = []
+        )
     except Exception as e:
         print('Error While Getting info:', e)
 
-async def get_videos_from_webpage(sem, session: aiohttp.ClientSession, page_url: str, **kwargs) -> list[dict]:
+async def get_videos_from_webpage(sem, session: aiohttp.ClientSession, page_url: str, **kwargs) -> list[ThumbVideo]:
     async with sem:
         try:
             async with session.get(page_url, **kwargs) as response:

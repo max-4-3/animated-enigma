@@ -2,7 +2,8 @@ import aiohttp, re
 from fake_useragent import UserAgent
 from contextlib import asynccontextmanager
 
-link_pattern = re.compile(r'''^https?://(?:[a-z0-9-]+\.)*okxxx\d{1,1}\.(?:com|org)/.+/$''')
+DOMAIN = "https://okxxx1.com"
+link_pattern = re.compile(r'''^https?://(?:[a-z0-9-]+\.)*okxxx\d{1,1}\.(?:com|org).*/$''')
 
 @asynccontextmanager
 async def make_session():
