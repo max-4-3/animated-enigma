@@ -1,6 +1,60 @@
-import os, json, asyncio, re
+import os, json, asyncio, re, time
 from rich import print
 from pydantic import BaseModel
+import pyperclip
+from typing import Callable
+from threading import Thread, Event, Lock
+
+class ClipboardMonitor:
+    def __init__(self, 
+                 string_validation: Callable[[str], bool], 
+                 prefix: str = "", 
+                 poll_interval: float = 0.1):
+        self.string_validation = string_validation
+        self.prefix = prefix.strip()
+        self.poll_interval = poll_interval
+        self.collected = set()
+        self._stop_event = Event()
+        self._lock = Lock()
+        self._thread = Thread(target=self._monitor, daemon=True)
+
+    def __enter__(self):
+        print(f"[bold green]{self.prefix} 📋 Clipboard monitoring started. Press [red]Ctrl+C[/red] to stop.[/bold green]")
+        self._thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
+
+    def stop(self):
+        self._stop_event.set()
+        self._thread.join()
+        print(f"\n[bold green]🛑 Monitoring stopped. {len(self.collected)} unique item(s) collected.[/bold green]")
+
+    def get_collected(self) -> list[str]:
+        with self._lock:
+            return list(self.collected)
+
+    def _monitor(self):
+        last_clip = ""
+        while not self._stop_event.is_set():
+            try:
+                current = pyperclip.paste().strip()
+                if current and current != last_clip:
+                    last_clip = current
+                    if self.string_validation(current):
+                        with self._lock:
+                            if current not in self.collected:
+                                self.collected.add(current)
+                                print(f"[cyan]➕ Added:[/cyan] [bold]{current}[/bold]")
+                            else:
+                                print(f"[yellow]⚠️ Duplicate (ignored):[/yellow]")
+                    else:
+                        print(f"[dim]❌ Skipped (did not pass validation):[/dim]")
+                time.sleep(self.poll_interval)
+            except Exception as e:
+                print(f"[red]⚠️ Clipboard error: {e}[/red]")
+
 
 def load_data(fp=os.path.join(os.path.split(os.path.split(__file__)[0])[0], 'config.json')):
     if not os.path.exists(fp):
