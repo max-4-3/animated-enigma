@@ -1,11 +1,10 @@
 from bs4 import BeautifulSoup, Tag
-from . import DOMAIN
+from . import DOMAIN, get_text_wrapper
 from uuid import uuid4
 from ..converters import convert_views, convert_duration
 import aiohttp
 from ..models import Thumbnail, ThumbVideo, Metadata, VideoLinks, ExternalLink
 from http.cookies import SimpleCookie
-from .video import get_text_wrapper
 
 async def extract_all_thumb_videos(webpage: BeautifulSoup | Tag) -> list[ThumbVideo | None]:
     results = []

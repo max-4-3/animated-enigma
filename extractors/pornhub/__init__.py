@@ -30,3 +30,9 @@ def is_video_link(link: str) -> bool:
 
 def is_page_link(link: str) -> bool:
     return is_valid_link(link)
+
+def get_text_wrapper(exp, default = None):
+    try:
+        return exp()
+    except:
+        return default

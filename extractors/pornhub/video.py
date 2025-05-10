@@ -2,16 +2,10 @@ from bs4 import BeautifulSoup
 import aiohttp, json, re
 from ..converters import convert_views
 from datetime import datetime
-from . import DOMAIN
+from . import DOMAIN, get_text_wrapper
 from .page import extract_all_thumb_videos
 from ..models import ExternalLink, Recommendations, VideoLinks, Media, MediaItem, Metadata, Video, Thumbnail
 from http.cookies import SimpleCookie
-
-def get_text_wrapper(exp, default = None):
-    try:
-        return exp()
-    except:
-        return default
 
 def get_resolutions(flash_var: dict) -> dict:
     res = {}
@@ -63,6 +57,9 @@ async def extract_video(sem, session: aiohttp.ClientSession, video_link: str, in
                 # Tags, Categories, PornStars, Model Attribution, Production
                 links = []
                 for info_raw in soup.select('div.video-detailed-info div.video-info-row'):
+                    if not info_raw:
+                        continue
+
                     if info_raw.select_one('div.userInfoBlock') or (not info_raw.select_one('p')) or (not info_raw.select('a')):
                         continue
 
@@ -81,17 +78,20 @@ async def extract_video(sem, session: aiohttp.ClientSession, video_link: str, in
 
                 # User Related Info
                 userinfo = soup.select_one('div.userInfoBlock')
-                user = {
-                    "avatar": userinfo.select_one('div.userAvatar img').attrs.get('src'),
-                    "name": get_text_wrapper(lambda: userinfo.select_one('div.userInfo span.usernameBadgesWrapper a').get_text(strip=True), "Unknown User"),
-                    "url": 'https://' + DOMAIN + userinfo.select_one('div.userInfo span.usernameBadgesWrapper a').attrs.get('href', '/'),
-                    "titles": [
-                        i.attrs.get('data-title')
-                        for i in userinfo.select('div.userInfo span.usernameBadgesWrapper i')
-                    ],
-                    "total_videos": get_text_wrapper(lambda: userinfo.select('div.userInfo span:not(.line):not(.usernameBadgesWrapper)')[0].get_text(strip=True), 'N/A'),
-                    "total_subs": get_text_wrapper(lambda: userinfo.select('div.userInfo span:not(.line):not(.usernameBadgesWrapper)')[1].get_text(strip=True), 'N/A'),
-                }
+                if userinfo:
+                    user = {
+                        "avatar": userinfo.select_one('div.userAvatar img').attrs.get('src'),
+                        "name": get_text_wrapper(lambda: userinfo.select_one('div.userInfo span.usernameBadgesWrapper a').get_text(strip=True), "Unknown User"),
+                        "url": 'https://' + DOMAIN + userinfo.select_one('div.userInfo span.usernameBadgesWrapper a').attrs.get('href', '/'),
+                        "titles": [
+                            i.attrs.get('data-title')
+                            for i in userinfo.select('div.userInfo span.usernameBadgesWrapper i')
+                        ],
+                        "total_videos": get_text_wrapper(lambda: userinfo.select('div.userInfo span:not(.line):not(.usernameBadgesWrapper)')[0].get_text(strip=True), 'N/A'),
+                        "total_subs": get_text_wrapper(lambda: userinfo.select('div.userInfo span:not(.line):not(.usernameBadgesWrapper)')[1].get_text(strip=True), 'N/A'),
+                    }
+                else:
+                    user = {}
 
                 # Recommendations
                 relateds = []
