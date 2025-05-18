@@ -64,11 +64,11 @@ def setup_task_loggers():
 Log, GatherLog, DownloadLog, ConcatLog = setup_task_loggers()
 
 # Then in your functions, use the appropriate logger:
-async def download_segment(sem, session: aiohttp.ClientSession, segment_url: str, download_dir: str, pbar: tqdm, retry_limit: int = 5, fixed_backoff: int | float = 2.0):
+async def download_segment(sem, session: aiohttp.ClientSession, segment_url: str, download_dir: str, pbar: tqdm, file_name = None, retry_limit: int = 5, fixed_backoff: int | float = 2.0):
     async with sem:
         try:
             DownloadLog.debug(f'GET: { segment_url = }; { download_dir = }')        
-            segment_name = segment_url.split('/')[-1].split('?')[0] or segment_url.split("/")[-1]
+            segment_name = (segment_url.split('/')[-1].split('?')[0] or segment_url.split("/")[-1]) if not file_name else file_name
             download_path = os.path.join(download_dir, segment_name)
 
             is_succesfull = False
@@ -307,7 +307,7 @@ async def download_video(sem: asyncio.Semaphore, session: aiohttp.ClientSession,
 
                     # This is a media segment (e.g., .ts)
                     segment_url = urljoin(base_url, line)
-                    segment_name = line.split('?')[0].split('/')[-1]
+                    segment_name = f"seg-{i}.ts"
 
                     GatherLog.debug(f'Adding segment {i}: {segment_name} from {segment_url}')
                     m3u8_urls.append((segment_name, segment_url))
@@ -319,7 +319,7 @@ async def download_video(sem: asyncio.Semaphore, session: aiohttp.ClientSession,
                 tasks = []
                 filenames = []
                 for name, link in m3u8_urls:
-                    tasks.append(asyncio.create_task(download_segment(download_sem, session, link, temp_dir, pbar)))
+                    tasks.append(asyncio.create_task(download_segment(download_sem, session, link, temp_dir, pbar, file_name=name)))
                     filenames.append(os.path.join(temp_dir, name))
 
                 await asyncio.gather(*tasks)
