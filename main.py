@@ -14,7 +14,6 @@ from tools.utils import (
     is_user_quit,
     sanitize_filename,
     format_elapsed_time,
-    ClipboardMonitor,
 )
 from tools.downloader import download_video, download_video_with_ffmpeg, add_thumbnail
 from config import *
@@ -51,7 +50,6 @@ async def user_input_proccesser(
                 f"{prefix} Enter Only Video Links:", validator=video_link_validator
             )
         ]
-
     elif video_link_validator(userinput):
         return [ThumbVideo(url=userinput)]
 
