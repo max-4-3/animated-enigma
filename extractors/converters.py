@@ -2,30 +2,35 @@ import re
 from . import VIEWS_MAP
 from functools import lru_cache
 
+
 @lru_cache(maxsize=512)
 def convert_views(views_string: str) -> int:
     # Find and searches the abbervative
     if isinstance(views_string, (int, float)):
         return int(views_string)
 
-    abb = re.search('[A-Za-z]', views_string)
+    abb = re.search("[A-Za-z]", views_string)
     if not abb:
         return int(0.0)
-    
+
     abb = abb.group(0)
     # Convert the string into all number string
-    views_string = float(re.sub(r'[A-Za-z \-]', '', views_string) or 0.0)
-    return int(views_string * VIEWS_MAP.get(abb.upper(), 1)) # Do a dict lookup and return the approprite value
+    views_string = float(re.sub(r"[A-Za-z \-]", "", views_string) or 0.0)
+    return int(
+        views_string * VIEWS_MAP.get(abb.upper(), 1)
+    )  # Do a dict lookup and return the approprite value
+
 
 # Precompile regex once
-_duration_units_regex = re.compile(r'(\d+(?:\.\d+)?)(h|m|s)', flags=re.IGNORECASE)
+_duration_units_regex = re.compile(r"(\d+(?:\.\d+)?)(h|m|s)", flags=re.IGNORECASE)
+
 
 @lru_cache(maxsize=512)
 def convert_duration(duration_string: str) -> int:
     """
     Converts various duration formats to total seconds.
     Optimized for repeated calls with LRU caching.
-    
+
     Supported formats:
     - "SS"
     - "MM:SS"
@@ -48,10 +53,12 @@ def convert_duration(duration_string: str) -> int:
     # Match formats like "2h 3m 4s"
     matches = _duration_units_regex.findall(duration_string)
     if matches:
-        return int(sum(
-            float(value) * {'h': 3600, 'm': 60, 's': 1}[unit]
-            for value, unit in matches
-        ))
+        return int(
+            sum(
+                float(value) * {"h": 3600, "m": 60, "s": 1}[unit]
+                for value, unit in matches
+            )
+        )
 
     # Handle colon-separated formats: [SS], [MM:SS], [HH:MM:SS], [HH:MM:SS:FF]
     parts = duration_string.split(":")
