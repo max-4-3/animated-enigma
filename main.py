@@ -1,4 +1,8 @@
-import asyncio, os, re, time, threading
+import asyncio
+import os
+import re
+import time
+import threading
 from rich import print
 from uuid import uuid4
 from aiohttp import ClientSession
@@ -98,14 +102,16 @@ async def download_videos(
             r"\s{2,}",
             " ",
             re.search(
-                r"[\w+\s]+", name_suffix or os.path.basename(root_download_path)
+                r"[\w+\s]+", name_suffix or os.path.basename(
+                    root_download_path)
             ).group(0),
         ).strip()
         + " ]"
     )
 
     print(
-        f'[bold green]Downloading {len(videos)} videos to:[/bold green] "[cyan]{os.path.abspath(root_download_path)}[/cyan]"'
+        f'[bold green]Downloading {len(videos)} videos to:[/bold green] "[cyan]{
+            os.path.abspath(root_download_path)}[/cyan]"'
     )
 
     new_videos, videos_failed = [], []
@@ -116,7 +122,8 @@ async def download_videos(
 
         video_id = video.url.rstrip("/").split("/")[-1]
         print(
-            f"[bold]{idx}/{len(videos)}[/bold] Extracting: [yellow]{video_id}[/yellow]"
+            f"[bold]{
+                idx}/{len(videos)}[/bold] Extracting: [yellow]{video_id}[/yellow]"
         )
 
         try:
@@ -124,7 +131,8 @@ async def download_videos(
             for attempt in range(1, max_retries + 1):
                 try:
                     print(
-                        f"[blue]🔍 Attempt {attempt}: Extracting video details...[/blue]"
+                        f"[blue]🔍 Attempt {
+                            attempt}: Extracting video details...[/blue]"
                     )
                     video_extracted: Video = await extract_details_func(
                         sem, session, video.url
@@ -137,7 +145,8 @@ async def download_videos(
                     if attempt < max_retries:
                         wait = backoff_base**attempt
                         print(
-                            f"[yellow]↻ Retrying extraction in {wait:.2f}s...[/yellow]"
+                            f"[yellow]↻ Retrying extraction in {
+                                wait:.2f}s...[/yellow]"
                         )
                         await asyncio.sleep(wait)
                     else:
@@ -153,13 +162,15 @@ async def download_videos(
 
             json_path = os.path.join(
                 INITIAL_PATH,
-                sanitize_filename(video_extracted.title)[:80] + name_suffix + ".json",
+                sanitize_filename(video_extracted.title)[
+                    :80] + name_suffix + ".json",
             )
             save_data(video_extracted, json_path)
             videos_failed.append(video_extracted)
 
             print(
-                f"[green]✅ Info gathered![/green] Downloading: [italic cyan]{video_extracted.title}[/italic cyan]"
+                f"[green]✅ Info gathered![/green] Downloading: [italic cyan]{
+                    video_extracted.title}[/italic cyan]"
             )
 
             media = (
@@ -174,7 +185,8 @@ async def download_videos(
             download_url = media.url
             if not download_url.startswith("http"):
                 print(
-                    f"[red]❌ Invalid media URL:[/red] [yellow]{download_url}[/yellow]"
+                    f"[red]❌ Invalid media URL:[/red] [yellow]{
+                        download_url}[/yellow]"
                 )
                 continue
 
@@ -204,7 +216,8 @@ async def download_videos(
                 for attempt in range(1, download_retries + 1):
                     try:
                         print(
-                            f"[blue]▶ Attempt {attempt}: Using custom downloader...[/blue]"
+                            f"[blue]▶ Attempt {
+                                attempt}: Using custom downloader...[/blue]"
                         )
                         size_downloaded, time_taken, output_file = await download_video(
                             sem,
@@ -224,14 +237,16 @@ async def download_videos(
                         print(f"[red]⚠ Custom download failed: {e}[/red]")
                         if attempt < max_retries:
                             wait = backoff_base**attempt
-                            print(f"[yellow]↻ Retrying in {wait:.2f}s...[/yellow]")
+                            print(f"[yellow]↻ Retrying in {
+                                  wait:.2f}s...[/yellow]")
                             await asyncio.sleep(wait)
                         else:
                             print("[blue]↪ Falling back to ffmpeg...[/blue]")
                             for ff_attempt in range(1, max_retries + 1):
                                 try:
                                     print(
-                                        f"[blue]▶ Attempt {ff_attempt}: Using ffmpeg...[/blue]"
+                                        f"[blue]▶ Attempt {
+                                            ff_attempt}: Using ffmpeg...[/blue]"
                                     )
                                     size_downloaded, time_taken, output_file = (
                                         await download_video_with_ffmpeg(
@@ -248,7 +263,8 @@ async def download_videos(
                                     if ff_attempt < max_retries:
                                         wait = backoff_base**ff_attempt
                                         print(
-                                            f"[yellow]↻ Retrying in {wait:.2f}s...[/yellow]"
+                                            f"[yellow]↻ Retrying in {
+                                                wait:.2f}s...[/yellow]"
                                         )
                                         await asyncio.sleep(wait)
                                     else:
@@ -285,7 +301,8 @@ async def download_videos(
         finally:
             await asyncio.sleep(0.02 * idx)
 
-    print(f"\n[bold green]✔ Completed:[/bold green] {len(new_videos)} downloaded")
+    print(
+        f"\n[bold green]✔ Completed:[/bold green] {len(new_videos)} downloaded")
     if videos_failed:
         print(f"[bold red]✘ Failed:[/bold red] {len(videos_failed)} videos")
         fail_file = os.path.join(
@@ -298,8 +315,10 @@ async def download_videos(
         save_data(videos_failed, fail_file)
         print(f"[yellow]Saved failed video info to:[/yellow] {fail_file}")
 
-    print(f"[bold cyan]⏱ Total time:[/bold cyan] {format_elapsed_time(total_time)}")
-    print(f"[bold cyan]💾 Total data:[/bold cyan] {format_bytes_readable(total_size)}")
+    print(
+        f"[bold cyan]⏱ Total time:[/bold cyan] {format_elapsed_time(total_time)}")
+    print(
+        f"[bold cyan]💾 Total data:[/bold cyan] {format_bytes_readable(total_size)}")
     return new_videos
 
 
@@ -329,7 +348,8 @@ async def okxxx_handler():
                         session,
                         urls,
                         extract_details_func=extract_video_info,
-                        root_download_path=os.path.join(DOWNLOAD_PATH, "okxxx"),
+                        root_download_path=os.path.join(
+                            DOWNLOAD_PATH, "okxxx"),
                         thumbnail_url_extract_func=lambda info: info.thumbnail.url,
                     )
                     save_data(new_data, temp)
@@ -364,7 +384,8 @@ async def pornhub_handler():
 
             path_url = first_non_comment_line[0]
             index_url = (
-                "/".join(a.split("/")[:-1]).rstrip("/") + "/" + path_url.lstrip("/")
+                "/".join(a.split("/")[:-1]).rstrip("/") +
+                "/" + path_url.lstrip("/")
             )
             return index_url
 
@@ -500,7 +521,7 @@ async def xhamster_handler():
                         QUERY_SEM, session, ui.strip()
                     )
                 elif not is_valid_link(ui):
-                    raise ValueError(f"Invalid Url! [{ ui = }]")
+                    raise ValueError(f"Invalid Url! [{ui=}]")
 
                 try:
                     new_data = await download_videos(
@@ -553,7 +574,8 @@ async def main():
 
         key = None
         try:
-            key = list(available_domains.keys())[int(userinput.strip().lower()) - 1]
+            key = list(available_domains.keys())[
+                int(userinput.strip().lower()) - 1]
             handler = available_domains.get(key)
             if not handler:
                 raise NotImplementedError(
