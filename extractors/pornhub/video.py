@@ -1,5 +1,7 @@
 from bs4 import BeautifulSoup
-import aiohttp, json, re
+import aiohttp
+import json
+import re
 from ..converters import convert_views
 from datetime import datetime
 from . import DOMAIN, get_text_wrapper
@@ -45,177 +47,181 @@ async def extract_video(
                 cookie = SimpleCookie()
                 cookie.load(cookie_str)
                 # Convert to a dict that aiohttp can understand
-                cookies_dict = {key: morsel.value for key, morsel in cookie.items()}
+                cookies_dict = {key: morsel.value for key,
+                                morsel in cookie.items()}
                 session.cookie_jar.update_cookies(cookies_dict, r.url)
 
             if r.cookies:
                 session.cookie_jar.update_cookies(r.cookies)
             try:
                 r.raise_for_status()
-                page = await r.text()
-
-                if not page:
-                    raise ValueError("Empty Response!")
-
-                soup = BeautifulSoup(page, "html.parser")
-                flash_var_match = re.search(
-                    r"""var (flashvars_\d*) = (?P<dict>{.*});\n""", page
-                )
-                if not flash_var_match:
-                    raise ValueError("Unable to find flash vars")
-                flash_var = json.loads(flash_var_match.group("dict"))
-
-                # Extract metadata
-                metadata = Metadata(
-                    duration=flash_var.get("video_duration") or 0,
-                    upload_date=datetime.fromtimestamp(
-                        flash_var.get("playbackTracking", {}).get("video_timestamp")
-                        or 0
-                    ).strftime("%d/%m/%Y, %H:%M:%S"),
-                    views=convert_views(
-                        get_text_wrapper(
-                            lambda: soup.select_one("div.views span.count").get_text(
-                                strip=True
-                            ),
-                            default=0,
-                        )
-                    ),
-                    extras={
-                        "likes": get_text_wrapper(
-                            lambda: soup.select_one("span.votesUp").get_text(
-                                strip=True
-                            ),
-                            0,
-                        )
-                    },
-                )
-
-                # Tags, Categories, PornStars, Model Attribution, Production
-                links = []
-                for info_raw in soup.select(
-                    "div.video-detailed-info div.video-info-row"
-                ):
-                    if not info_raw:
-                        continue
-
-                    if (
-                        info_raw.select_one("div.userInfoBlock")
-                        or (not info_raw.select_one("p"))
-                        or (not info_raw.select("a"))
-                    ):
-                        continue
-
-                    vidlinks = VideoLinks(
-                        title=get_text_wrapper(
-                            lambda: info_raw.select_one("p").get_text(strip=True),
-                            "Unknowm Links Category",
-                        ),
-                        links=[],
-                    )
-                    for a in info_raw.select("a"):
-                        try:
-                            vidlinks.links.append(
-                                ExternalLink(
-                                    name=get_text_wrapper(
-                                        lambda: a.get_text(strip=True), "Unknown Name"
-                                    ),
-                                    url="https://" + DOMAIN + a.attrs.get("href"),
-                                )
-                            )
-                        except:
-                            pass
-                    links.append(vidlinks)
-
-                # User Related Info
-                userinfo = soup.select_one("div.userInfoBlock")
-                if userinfo:
-                    user = {
-                        "avatar": userinfo.select_one("div.userAvatar img").attrs.get(
-                            "src"
-                        ),
-                        "name": get_text_wrapper(
-                            lambda: userinfo.select_one(
-                                "div.userInfo span.usernameBadgesWrapper a"
-                            ).get_text(strip=True),
-                            "Unknown User",
-                        ),
-                        "url": "https://"
-                        + DOMAIN
-                        + userinfo.select_one(
-                            "div.userInfo span.usernameBadgesWrapper a"
-                        ).attrs.get("href", "/"),
-                        "titles": [
-                            i.attrs.get("data-title")
-                            for i in userinfo.select(
-                                "div.userInfo span.usernameBadgesWrapper i"
-                            )
-                        ],
-                        "total_videos": get_text_wrapper(
-                            lambda: userinfo.select(
-                                "div.userInfo span:not(.line):not(.usernameBadgesWrapper)"
-                            )[0].get_text(strip=True),
-                            "N/A",
-                        ),
-                        "total_subs": get_text_wrapper(
-                            lambda: userinfo.select(
-                                "div.userInfo span:not(.line):not(.usernameBadgesWrapper)"
-                            )[1].get_text(strip=True),
-                            "N/A",
-                        ),
-                    }
-                else:
-                    user = {}
-
-                # Recommendations
-                relateds = []
-                if kwargs.get("recommendations", True):
-                    for recomends in soup.select('div[data-tab-content*="re"]'):
-                        try:
-                            r = Recommendations(
-                                title=recomends.attrs.get(
-                                    "data-tab-content", "N/A"
-                                ).upper(),
-                                contents=await extract_all_thumb_videos(recomends),
-                            )
-                            relateds.append(r)
-                        except:
-                            pass
-
-                # Media
-                media = Media(base_url="No BaseUrl For this!", items=[])
-                for defination in flash_var.get("mediaDefinitions", [])[:-1]:
-                    if defination.get("remote"):
-                        continue
-                    media.items.append(
-                        MediaItem(
-                            idx=len(media.items) + 1,
-                            url=defination.get("videoUrl", None),
-                            resolution=defination.get("quality") + "p",
-                        )
-                    )
-
-                return Video(
-                    title=flash_var.get("video_title")
-                    or get_text_wrapper(
-                        lambda: soup.select_one("title").get_text(strip=True),
-                        "Unnamed Video!",
-                    ),
-                    url=video_link,
-                    metadata=metadata,
-                    thumbnail=Thumbnail(
-                        url=soup.select_one('meta[property="og:image"]').attrs.get(
-                            "content"
-                        )
-                    ),
-                    media=media,
-                    tags=[],
-                    links=links,
-                    recommendations=relateds,
-                    extras={
-                        "user": user,
-                        "flash_vars": flash_var if include_var else None,
-                    },
-                )
             except Exception as e:
-                print(f'Unable to ectract video from "{video_link}": {e}')
+                print(f"Network Error:", e)
                 raise e
+
+            page = await r.text()
+
+            if not page:
+                raise ValueError("Empty Response!")
+
+            soup = BeautifulSoup(page, "html.parser")
+            flash_var_match = re.search(
+                r"""var (flashvars_\d*) = (?P<dict>{.*});\n""", page
+            )
+            if not flash_var_match:
+                raise ValueError("Unable to find flash vars")
+            flash_var = json.loads(flash_var_match.group("dict"))
+
+            # Extract metadata
+            metadata = Metadata(
+                duration=flash_var.get("video_duration") or 0,
+                upload_date=datetime.fromtimestamp(
+                    flash_var.get("playbackTracking", {}).get(
+                        "video_timestamp")
+                    or 0
+                ).strftime("%d/%m/%Y, %H:%M:%S"),
+                views=convert_views(
+                    get_text_wrapper(
+                        lambda: soup.select_one("div.views span.count").get_text(
+                            strip=True
+                        ),
+                        default=0,
+                    )
+                ),
+                extras={
+                    "likes": get_text_wrapper(
+                        lambda: soup.select_one("span.votesUp").get_text(
+                            strip=True
+                        ),
+                        0,
+                    )
+                },
+            )
+
+            # Tags, Categories, PornStars, Model Attribution, Production
+            links = []
+            for info_raw in soup.select(
+                "div.video-detailed-info div.video-info-row"
+            ):
+                if not info_raw:
+                    continue
+
+                if (
+                    info_raw.select_one("div.userInfoBlock")
+                    or (not info_raw.select_one("p"))
+                    or (not info_raw.select("a"))
+                ):
+                    continue
+
+                vidlinks = VideoLinks(
+                    title=get_text_wrapper(
+                        lambda: info_raw.select_one("p").get_text(strip=True),
+                        "Unknowm Links Category",
+                    ),
+                    links=[],
+                )
+                for a in info_raw.select("a"):
+                    try:
+                        vidlinks.links.append(
+                            ExternalLink(
+                                name=get_text_wrapper(
+                                    lambda: a.get_text(
+                                        strip=True), "Unknown Name"
+                                ),
+                                url="https://" + DOMAIN + a.attrs.get("href"),
+                            )
+                        )
+                    except:
+                        pass
+                links.append(vidlinks)
+
+            # User Related Info
+            userinfo = soup.select_one("div.userInfoBlock")
+            if userinfo:
+                user = {
+                    "avatar": get_text_wrapper(lambda: userinfo.select_one("div.userAvatar img").attrs.get(
+                        "src"
+                    ), "NoAvatar"),
+                    "name": get_text_wrapper(
+                        lambda: userinfo.select_one(
+                            "div.userInfo span.usernameBadgesWrapper a"
+                        ).get_text(strip=True),
+                        "Unknown User",
+                    ),
+                    "url": "https://"
+                    + DOMAIN
+                    + get_text_wrapper(lambda: userinfo.select_one(
+                        "div.userInfo span.usernameBadgesWrapper a"
+                    ).attrs.get("href", "/"), ""),
+                    "titles": [
+                        i.attrs.get("data-title")
+                        for i in userinfo.select(
+                            "div.userInfo span.usernameBadgesWrapper i"
+                        ) if hasattr(i, "attrs") and i
+                    ],
+                    "total_videos": get_text_wrapper(
+                        lambda: userinfo.select(
+                            "div.userInfo span:not(.line):not(.usernameBadgesWrapper)"
+                        )[0].get_text(strip=True),
+                        "N/A",
+                    ),
+                    "total_subs": get_text_wrapper(
+                        lambda: userinfo.select(
+                            "div.userInfo span:not(.line):not(.usernameBadgesWrapper)"
+                        )[1].get_text(strip=True),
+                        "N/A",
+                    ),
+                }
+            else:
+                user = {}
+
+            # Recommendations
+            relateds = []
+            if kwargs.get("recommendations", True):
+                for recomends in soup.select('div[data-tab-content*="re"]'):
+                    try:
+                        r = Recommendations(
+                            title=recomends.attrs.get(
+                                "data-tab-content", "N/A"
+                            ).upper(),
+                            contents=await extract_all_thumb_videos(recomends),
+                        )
+                        relateds.append(r)
+                    except:
+                        pass
+
+            # Media
+            media = Media(base_url="No BaseUrl For this!", items=[])
+            for defination in flash_var.get("mediaDefinitions", [])[:-1]:
+                if defination.get("remote"):
+                    continue
+                media.items.append(
+                    MediaItem(
+                        idx=len(media.items) + 1,
+                        url=defination.get("videoUrl", None),
+                        resolution=defination.get("quality") + "p",
+                    )
+                )
+
+            return Video(
+                title=flash_var.get("video_title")
+                or get_text_wrapper(
+                    lambda: soup.select_one("title").get_text(strip=True),
+                    "Unnamed Video!",
+                ),
+                url=video_link,
+                metadata=metadata,
+                thumbnail=Thumbnail(
+                    url=get_text_wrapper(soup.select_one('meta[property="og:image"]').attrs.get(
+                        "content"
+                    ), "https://google.com/")
+                ),
+                media=media,
+                tags=[],
+                links=links,
+                recommendations=relateds,
+                extras={
+                    "user": user,
+                    "flash_vars": flash_var if include_var else None,
+                },
+            )
