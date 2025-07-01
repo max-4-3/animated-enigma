@@ -1,4 +1,14 @@
-import aiohttp, asyncio, argparse, os, sys, aiofiles, time, shutil, logging, re, random
+import aiohttp
+import asyncio
+import argparse
+import os
+import sys
+import aiofiles
+import time
+import shutil
+import logging
+import re
+import random
 from rich import print
 from uuid import uuid4
 from tqdm import tqdm
@@ -24,7 +34,8 @@ def setup_task_loggers():
     os.makedirs(LOG_PATH, exist_ok=True)
 
     now = datetime.now()
-    date_suffix = f"{now.month:02d}-{now.day:02d}-{now.year:02d}-{now.hour:02d}"
+    date_suffix = f"{
+        now.month:02d}-{now.day:02d}-{now.year:02d}-{now.hour:02d}"
 
     # Main logger (keep your existing one)
     main_logger = logging.getLogger(__name__)
@@ -82,9 +93,10 @@ async def download_segment(
 ):
     async with sem:
         try:
-            DownloadLog.debug(f"GET: { segment_url = }; { download_dir = }")
+            DownloadLog.debug(f"GET: {segment_url=}; {download_dir=}")
             segment_name = (
-                (segment_url.split("/")[-1].split("?")[0] or segment_url.split("/")[-1])
+                (segment_url.split("/")[-1].split("?")
+                 [0] or segment_url.split("/")[-1])
                 if not file_name
                 else file_name
             )
@@ -95,15 +107,16 @@ async def download_segment(
                 try:
                     async with session.get(segment_url) as r:
                         r.raise_for_status()
-                        DownloadLog.info(f"GET: { segment_url = } [{ r.status = }]")
+                        DownloadLog.info(f"GET: {segment_url=} [{r.status=}]")
 
-                        DownloadLog.debug(f"{ download_path = }; { segment_name = }")
+                        DownloadLog.debug(f"{download_path=}; {segment_name=}")
                         with tqdm(
                             dynamic_ncols=True,
                             total=int(r.headers.get("content-length", 0)),
                             unit="B",
                             unit_scale=True,
-                            desc=f'\t|-> Downloading "{segment_name}"'.expandtabs(4),
+                            desc=f'\t|-> Downloading "{
+                                segment_name}"'.expandtabs(4),
                             leave=False,
                             position=1,
                         ) as segment_pbar:
@@ -113,7 +126,8 @@ async def download_segment(
                                     segment_pbar.update(len(chunk))
 
                         DownloadLog.info(
-                            f"File Saved at { download_path = } under { segment_name = } [ {os.path.getsize(download_path) if os.path.exists(download_path) else 0} ]"
+                            f"File Saved at {download_path=} under {segment_name=} [ {
+                                os.path.getsize(download_path) if os.path.exists(download_path) else 0} ]"
                         )
                         await asyncio.sleep(0.1)
                         pbar.update(1)
@@ -124,7 +138,8 @@ async def download_segment(
                     retry_after = fixed_backoff * i + random.random()
                     status = getattr(r, "status", "N/A")
                     DownloadLog.error(
-                        f"[Failed] GET: { segment_url = } [{status}] [exception = {e}] [{ retry_after = }; { retry_limit - i =  }]"
+                        f"[Failed] GET: {segment_url=} [{status}] [exception = {
+                            e}] [{retry_after=}; {retry_limit - i=}]"
                     )
                     await asyncio.sleep(retry_after)
 
@@ -136,7 +151,8 @@ async def download_segment(
         except Exception as e:
             print(f'Unable to download segement "{segment_name}"!')
             DownloadLog.error(
-                f"[Download Segement Error] { e = }; { segment_name = }; { download_path = }; { segment_url = }"
+                f"[Download Segement Error] {e=}; {segment_name=}; {
+                    download_path=}; {segment_url=}"
             )
             return ""
 
@@ -185,21 +201,15 @@ async def add_thumbnail(
             print(f"[blue]Adding thumbnail to video:[/blue] {video_file}")
             cmd = [
                 "ffmpeg",
-                "-i",
-                video_file,
-                "-i",
-                thumb_path,
-                "-map",
-                "1",  # Input stream 1 (the thumbnail)
-                "-map",
-                "0",  # Input stream 0 (the video)
-                "-c",
-                "copy",  # Copy both video and audio streams
-                "-disposition:0",
-                "attached_pic",  # Set the thumbnail disposition
-                "-y",  # Override output file without asking
-                temp_file_name,
+                "-i", video_file,
+                "-i", thumb_path,
+                "-map", "0",
+                "-map", "1",
+                "-c", "copy",
+                "-disposition:v:1", "attached_pic",
+                "-y", temp_file_name
             ]
+ 
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.DEVNULL,  # Suppress standard output

@@ -35,7 +35,7 @@ async def user_input_proccesser(
         (
             print_first
             if print_first
-            else f'{prefix} Enter link ["list" for multiple links]:'
+            else f'{prefix} Enter link ["list" for multiple links]: '
         ),
         end="",
     )
@@ -96,7 +96,10 @@ async def download_videos(
     thumbnail_url_extract_func: Callable = None,
 ):
     os.makedirs(root_download_path, exist_ok=True)
-    name_suffix = (
+    save_data([vid.model_dump_json() for vid in videos], os.path.join(INITIAL_PATH, f"{datetime.now().strftime("%d-%m-%Y %H.%M.%S")}-Videos-List.json")
+
+
+    name_suffix=(
         "[ "
         + re.sub(
             r"\s{2,}",
@@ -114,27 +117,27 @@ async def download_videos(
             os.path.abspath(root_download_path)}[/cyan]"'
     )
 
-    new_videos, videos_failed = [], []
-    total_size = total_time = 0
+    new_videos, videos_failed=[], []
+    total_size=total_time=0
 
     for idx, video in enumerate(videos, 1):
         clear()
 
-        video_id = video.url.rstrip("/").split("/")[-1]
+        video_id=video.url.rstrip("/").split("/")[-1]
         print(
             f"[bold]{
                 idx}/{len(videos)}[/bold] Extracting: [yellow]{video_id}[/yellow]"
         )
 
         try:
-            video_extracted = None
+            video_extracted=None
             for attempt in range(1, max_retries + 1):
                 try:
                     print(
                         f"[blue]🔍 Attempt {
                             attempt}: Extracting video details...[/blue]"
                     )
-                    video_extracted: Video = await extract_details_func(
+                    video_extracted: Video=await extract_details_func(
                         sem, session, video.url
                     )
                     if not video_extracted:
@@ -143,7 +146,7 @@ async def download_videos(
                 except Exception as e:
                     print(f"[red]⚠ Extract failed: {e}[/red]")
                     if attempt < max_retries:
-                        wait = backoff_base**attempt
+                        wait=backoff_base**attempt
                         print(
                             f"[yellow]↻ Retrying extraction in {
                                 wait:.2f}s...[/yellow]"
@@ -153,14 +156,14 @@ async def download_videos(
                         print(
                             "[red]❌ Max retries reached for extraction. Skipping video.[/red]"
                         )
-                        video_extracted = None
+                        video_extracted=None
 
             if not video_extracted:
                 print(f"[red]❌ Extraction failed[/red]")
                 videos_failed.append(video)
                 continue
 
-            json_path = os.path.join(
+            json_path=os.path.join(
                 INITIAL_PATH,
                 sanitize_filename(video_extracted.title)[
                     :80] + name_suffix + ".json",
@@ -173,7 +176,7 @@ async def download_videos(
                     video_extracted.title}[/italic cyan]"
             )
 
-            media = (
+            media=(
                 get_media_dict_func(video_extracted)
                 if get_media_dict_func
                 else get_highest_media_dict(video_extracted.media)
@@ -182,7 +185,7 @@ async def download_videos(
                 print(f"[red]❌ Unable to retrieve media dict[/red]")
                 continue
 
-            download_url = media.url
+            download_url=media.url
             if not download_url.startswith("http"):
                 print(
                     f"[red]❌ Invalid media URL:[/red] [yellow]{
@@ -192,7 +195,7 @@ async def download_videos(
 
             if pre_meida_url_func:
                 print(f"[blue]» Initilizing media url...[/blue]")
-                download_url = await pre_meida_url_func(
+                download_url=await pre_meida_url_func(
                     session=(
                         session
                         if not isinstance(download_session, ClientSession)
@@ -203,7 +206,7 @@ async def download_videos(
 
             if skip_custom_downloader:
                 print(f"[blue]▶ Using ffmpeg...[/blue]")
-                size_downloaded, time_taken, output_file = (
+                size_downloaded, time_taken, output_file=(
                     await download_video_with_ffmpeg(
                         sem,
                         video_extracted.title,
@@ -219,7 +222,7 @@ async def download_videos(
                             f"[blue]▶ Attempt {
                                 attempt}: Using custom downloader...[/blue]"
                         )
-                        size_downloaded, time_taken, output_file = await download_video(
+                        size_downloaded, time_taken, output_file=await download_video(
                             sem,
                             (
                                 session
@@ -236,7 +239,7 @@ async def download_videos(
                     except Exception as e:
                         print(f"[red]⚠ Custom download failed: {e}[/red]")
                         if attempt < max_retries:
-                            wait = backoff_base**attempt
+                            wait=backoff_base**attempt
                             print(f"[yellow]↻ Retrying in {
                                   wait:.2f}s...[/yellow]")
                             await asyncio.sleep(wait)
@@ -248,7 +251,7 @@ async def download_videos(
                                         f"[blue]▶ Attempt {
                                             ff_attempt}: Using ffmpeg...[/blue]"
                                     )
-                                    size_downloaded, time_taken, output_file = (
+                                    size_downloaded, time_taken, output_file=(
                                         await download_video_with_ffmpeg(
                                             sem,
                                             video_extracted.title,
@@ -261,7 +264,7 @@ async def download_videos(
                                 except Exception as e:
                                     print(f"[red]❌ ffmpeg failed: {e}[/red]")
                                     if ff_attempt < max_retries:
-                                        wait = backoff_base**ff_attempt
+                                        wait=backoff_base**ff_attempt
                                         print(
                                             f"[yellow]↻ Retrying in {
                                                 wait:.2f}s...[/yellow]"
@@ -271,7 +274,7 @@ async def download_videos(
                                         raise Exception("All methods failed")
 
             if thumbnail_url_extract_func:
-                thumbnail_url = thumbnail_url_extract_func(video_extracted)
+                thumbnail_url=thumbnail_url_extract_func(video_extracted)
                 if not thumbnail_url:
                     continue
                 print(f"[green]▶ Adding Thumbnail...")
@@ -305,7 +308,7 @@ async def download_videos(
         f"\n[bold green]✔ Completed:[/bold green] {len(new_videos)} downloaded")
     if videos_failed:
         print(f"[bold red]✘ Failed:[/bold red] {len(videos_failed)} videos")
-        fail_file = os.path.join(
+        fail_file=os.path.join(
             INITIAL_PATH,
             datetime.now().strftime(r"%d-%m-%Y %H.%M.%S")
             + "-Videos-Failed-"
@@ -331,9 +334,9 @@ async def okxxx_handler():
     async with make_session() as session:
         while True:
             clear()
-            temp = os.path.join(INITIAL_PATH, f"{uuid4()}__initial.json")
+            temp=os.path.join(INITIAL_PATH, f"{uuid4()}__initial.json")
             try:
-                urls = await user_input_proccesser(
+                urls=await user_input_proccesser(
                     extract_videos_from_webpage,
                     is_page_link,
                     is_video_link,
@@ -343,7 +346,7 @@ async def okxxx_handler():
                 )
 
                 try:
-                    new_data = await download_videos(
+                    new_data=await download_videos(
                         QUERY_SEM,
                         session,
                         urls,
@@ -370,20 +373,20 @@ async def pornhub_handler():
     from extractors.pornhub.video import extract_video
 
     async def get_index_url(*_, **kwargs):
-        a = kwargs.get("url")
-        ses = kwargs.get("session")
+        a=kwargs.get("url")
+        ses=kwargs.get("session")
         async with ses.get(a) as m3u8_r:
             m3u8_r.raise_for_status()
-            raw = await m3u8_r.text()
-            first_non_comment_line = [
+            raw=await m3u8_r.text()
+            first_non_comment_line=[
                 line for line in raw.splitlines() if not line.startswith("#")
             ]
 
             if len(first_non_comment_line) < 1:
                 raise ValueError("Unable to Extracr Index.m3u8!")
 
-            path_url = first_non_comment_line[0]
-            index_url = (
+            path_url=first_non_comment_line[0]
+            index_url=(
                 "/".join(a.split("/")[:-1]).rstrip("/") +
                 "/" + path_url.lstrip("/")
             )
@@ -397,9 +400,9 @@ async def pornhub_handler():
     ):
         while True:
             clear()
-            temp = os.path.join(INITIAL_PATH, f"{uuid4()}__initial.json")
+            temp=os.path.join(INITIAL_PATH, f"{uuid4()}__initial.json")
             try:
-                urls = await user_input_proccesser(
+                urls=await user_input_proccesser(
                     extract_videos_from_webpage,
                     is_page_link,
                     is_video_link,
@@ -409,7 +412,7 @@ async def pornhub_handler():
                 )
 
                 try:
-                    new_data = await download_videos(
+                    new_data=await download_videos(
                         QUERY_SEM,
                         session,
                         urls,
@@ -439,9 +442,9 @@ async def xnxx_handler():
     async with make_session() as session:
         while True:
             clear()
-            temp = os.path.join(INITIAL_PATH, f"{uuid4()}__initial.json")
+            temp=os.path.join(INITIAL_PATH, f"{uuid4()}__initial.json")
             try:
-                urls = await user_input_proccesser(
+                urls=await user_input_proccesser(
                     get_videos_from_webpage,
                     is_page_link,
                     is_video_link,
@@ -451,7 +454,7 @@ async def xnxx_handler():
                 )
 
                 try:
-                    new_data = await download_videos(
+                    new_data=await download_videos(
                         QUERY_SEM,
                         session,
                         urls,
@@ -489,8 +492,8 @@ async def xhamster_handler():
         )
 
     async def get_max_url(**kwargs):
-        url = kwargs.get("url")
-        max_res = max(
+        url=kwargs.get("url")
+        max_res=max(
             [
                 int(re.sub(r"\D", "", "".join(res.split(":")[1:])))
                 for res in url.split("multi=")[1].split("/")[0].split(",")
@@ -502,29 +505,29 @@ async def xhamster_handler():
     async with make_session() as session:
         while True:
             clear()
-            temp = os.path.join(INITIAL_PATH, f"{uuid4()}__initial.json")
+            temp=os.path.join(INITIAL_PATH, f"{uuid4()}__initial.json")
             try:
                 print('Enter link ["list" for multiple links]: ', end="")
-                ui = input("").strip()
+                ui=input("").strip()
 
                 if ui.lower().strip() == "list":
-                    urls = [
+                    urls=[
                         {"pageUrl": url}
                         for url in read_until("Enter link", validator=is_video_link)
                     ]
                 elif ui.lower().strip() == "exit":
                     return
                 elif is_video_link(ui):
-                    urls = [{"pageUrl": ui}]
+                    urls=[{"pageUrl": ui}]
                 elif is_page_link(ui):
-                    urls = await extract_videos_from_webpage(
+                    urls=await extract_videos_from_webpage(
                         QUERY_SEM, session, ui.strip()
                     )
                 elif not is_valid_link(ui):
                     raise ValueError(f"Invalid Url! [{ui=}]")
 
                 try:
-                    new_data = await download_videos(
+                    new_data=await download_videos(
                         QUERY_SEM,
                         session,
                         urls,
@@ -551,7 +554,7 @@ async def xhamster_handler():
 
 async def main():
 
-    available_domains = {
+    available_domains={
         "xnxx": xnxx_handler,
         "pornhub": pornhub_handler,
         "okxxx": okxxx_handler,
@@ -567,16 +570,16 @@ async def main():
             )
         )
         print("Choose from above: ", end="")
-        userinput = input("")
+        userinput=input("")
 
         if userinput.lower().strip() == "exit":
             return
 
-        key = None
+        key=None
         try:
-            key = list(available_domains.keys())[
+            key=list(available_domains.keys())[
                 int(userinput.strip().lower()) - 1]
-            handler = available_domains.get(key)
+            handler=available_domains.get(key)
             if not handler:
                 raise NotImplementedError(
                     f'Downloader for "{userinput}" is not implemented!'
